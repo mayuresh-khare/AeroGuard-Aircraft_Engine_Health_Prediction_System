@@ -106,24 +106,43 @@ st.markdown(
     f"""
     <style>
     #MainMenu {{visibility: hidden;}}
-    footer {{visibility: hidden;}}
-    header {{visibility: hidden;}}
+    footer    {{visibility: hidden;}}
 
-    /* ===== Sidebar collapsed toggle: stay visible even when header is hidden ===== */
+    /* ===== Header: make TRANSPARENT (NOT hidden) so sidebar toggle stays clickable ===== */
+    header[data-testid="stHeader"] {{
+        background:    transparent !important;
+        border-bottom: none        !important;
+        box-shadow:    none        !important;
+    }}
+    /* Hide the coloured decoration stripe */
+    [data-testid="stDecoration"]    {{ display:     none    !important; }}
+    /* Hide right-side toolbar (deploy button, kebab menu) */
+    [data-testid="stToolbarActions"]{{ visibility:  hidden  !important; }}
+    [data-testid="stStatusWidget"]  {{ visibility:  hidden  !important; }}
+    /* Hide the top-right main-menu entirely */
+    [data-testid="stMainMenuPopover"]{{ display:    none    !important; }}
+
+    /* ===== Sidebar collapsed toggle — styled as a dark pill button ===== */
     [data-testid="stSidebarCollapsedControl"] {{
-        visibility: visible !important;
-        opacity: 1 !important;
-        background: #0b1730 !important;
+        visibility:    visible      !important;
+        opacity:       1            !important;
+        background:    #0b1730     !important;
         border-radius: 0 10px 10px 0 !important;
-        box-shadow: 2px 0 10px rgba(0,0,0,.45) !important;
-        padding: 8px 5px !important;
-        top: 14px !important;
+        box-shadow:    2px 0 12px rgba(0,0,0,.5) !important;
+        padding:       10px 6px    !important;
+        top:           50%         !important;
+        transform:     translateY(-50%) !important;
+        transition:    background .2s  !important;
+    }}
+    [data-testid="stSidebarCollapsedControl"]:hover {{
+        background: #1e3a5f !important;
     }}
     [data-testid="stSidebarCollapsedControl"] svg {{
-        fill: #e7ecf7 !important;
+        fill:   #e7ecf7 !important;
         stroke: #e7ecf7 !important;
+        width:  20px   !important;
+        height: 20px   !important;
     }}
-
 
 
     /* ===== App background ===== */
