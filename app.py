@@ -151,9 +151,44 @@ st.markdown(
     /* ===== Sidebar ===== */
     section[data-testid="stSidebar"] {{ background-color: #0b1730; }}
     section[data-testid="stSidebar"] * {{ color: #e7ecf7 !important; }}
-    section[data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] > div {{
-        background-color: #16233f; color: #e7ecf7;
+
+    /* --- Selectbox: container + every inner layer --- */
+    section[data-testid="stSidebar"] [data-baseweb="select"] > div {{
+        background-color: #16233f  !important;
+        border-color:     #2d4a7a  !important;
+        color:            #e7ecf7  !important;
     }}
+    section[data-testid="stSidebar"] [data-baseweb="select"] div,
+    section[data-testid="stSidebar"] [data-baseweb="select"] span,
+    section[data-testid="stSidebar"] [data-baseweb="select"] p {{
+        background-color: transparent !important;
+        color:            #e7ecf7   !important;
+    }}
+    /* Placeholder text */
+    section[data-testid="stSidebar"] [data-baseweb="select"] [data-testid="stSelectboxVirtualDropdown"],
+    section[data-testid="stSidebar"] [data-baseweb="select"] input::placeholder {{
+        color: #94a3b8 !important;
+    }}
+    /* Typed search input */
+    section[data-testid="stSidebar"] [data-baseweb="select"] input {{
+        color:        #e7ecf7 !important;
+        caret-color:  #e7ecf7 !important;
+    }}
+    /* Dropdown chevron SVG */
+    section[data-testid="stSidebar"] [data-baseweb="select"] svg {{
+        fill: #e7ecf7 !important;
+    }}
+    /* Dropdown list (portal, rendered outside sidebar) */
+    [data-baseweb="popover"] [role="option"],
+    [data-baseweb="popover"] [role="listbox"] {{
+        background-color: #16233f !important;
+        color:            #e7ecf7 !important;
+    }}
+    [data-baseweb="popover"] [role="option"]:hover,
+    [data-baseweb="popover"] [aria-selected="true"] {{
+        background-color: #1e3a5f !important;
+    }}
+
 
     /* ===== Hero banner ===== */
     .hero-banner {{
