@@ -17,16 +17,19 @@ TEXT_DARK = "#10182c"
 
 
 def styled_layout(**overrides):
-    """Base Plotly layout with dark, always-visible text/axes; pass any
-    Plotly layout kwargs (height, legend, xaxis_title, ...) to override
-    or extend the defaults without duplicate-keyword errors."""
+    """Base Plotly layout; dynamically switches between light / dark theme.
+    Pass any Plotly layout kwargs to override or extend the defaults."""
+    _dm   = st.session_state.get("dark_mode", False)
+    _text = "#e2e8f0" if _dm else TEXT_DARK
+    _pbg  = "#1e293b" if _dm else "white"
+    _grid = "#334155" if _dm else "#e5e9f2"
     layout = {
-        "plot_bgcolor": "white",
-        "paper_bgcolor": "white",
-        "font": dict(color=TEXT_DARK),
-        "xaxis": dict(color=TEXT_DARK, gridcolor="#e5e9f2", title_font=dict(color=TEXT_DARK)),
-        "yaxis": dict(color=TEXT_DARK, gridcolor="#e5e9f2", title_font=dict(color=TEXT_DARK)),
-        "legend": dict(font=dict(color=TEXT_DARK)),
+        "plot_bgcolor":  _pbg,
+        "paper_bgcolor": _pbg,
+        "font":   dict(color=_text),
+        "xaxis":  dict(color=_text, gridcolor=_grid, title_font=dict(color=_text)),
+        "yaxis":  dict(color=_text, gridcolor=_grid, title_font=dict(color=_text)),
+        "legend": dict(font=dict(color=_text)),
     }
     layout.update(overrides)
     return layout
@@ -40,6 +43,13 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# --------------------------------------------------------------------------
+# THEME STATE  (must come right after set_page_config)
+# --------------------------------------------------------------------------
+if "dark_mode" not in st.session_state:
+    st.session_state.dark_mode = False
+_DM = st.session_state.dark_mode
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, "gradient_boosting_model.pkl")
@@ -82,69 +92,132 @@ CATEGORY_COLORS = {
 }
 
 # --------------------------------------------------------------------------
-# CUSTOM CSS
+# CUSTOM CSS  (light / dark — driven by _DM)
 # --------------------------------------------------------------------------
+_bg     = "#0f172a"        if _DM else "#f4f6fb"
+_card   = "#1e293b"        if _DM else "white"
+_txt    = "#e2e8f0"        if _DM else "#10182c"
+_lbl    = "#94a3b8"        if _DM else "#6b7484"
+_sub_c  = "#64748b"        if _DM else "#8a93a3"
+_border = "#334155"        if _DM else "#eef1f8"
+_shadow = "rgba(0,0,0,.32)" if _DM else "rgba(20,30,60,.08)"
+
 st.markdown(
-    """
+    f"""
     <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    .stApp { background-color: #f4f6fb; }
-    section[data-testid="stSidebar"] { background-color: #0b1730; }
-    section[data-testid="stSidebar"] * { color: #e7ecf7 !important; }
-    section[data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] > div {
+    #MainMenu {{visibility: hidden;}}
+    footer {{visibility: hidden;}}
+    header {{visibility: hidden;}}
+
+    /* ===== Sidebar collapsed toggle: stay visible even when header is hidden ===== */
+    [data-testid="stSidebarCollapsedControl"] {{
+        visibility: visible !important;
+        opacity: 1 !important;
+        background: #0b1730 !important;
+        border-radius: 0 10px 10px 0 !important;
+        box-shadow: 2px 0 10px rgba(0,0,0,.45) !important;
+        padding: 8px 5px !important;
+        top: 14px !important;
+    }}
+    [data-testid="stSidebarCollapsedControl"] svg {{
+        fill: #e7ecf7 !important;
+        stroke: #e7ecf7 !important;
+    }}
+
+    /* ===== Floating hamburger — always on screen ===== */
+    #ag-hamburger {{
+        position: fixed;
+        top: 14px; left: 14px;
+        z-index: 999999;
+        background: #0b1730;
+        color: #e7ecf7;
+        border: none;
+        border-radius: 10px;
+        padding: 8px 14px;
+        font-size: 20px;
+        cursor: pointer;
+        box-shadow: 0 2px 12px rgba(0,0,0,.50);
+        transition: background .18s, transform .13s;
+        line-height: 1;
+        user-select: none;
+        font-family: sans-serif;
+    }}
+    #ag-hamburger:hover {{ background: #1e3a5f; transform: scale(1.07); }}
+
+    /* ===== App background ===== */
+    .stApp {{ background-color: {_bg}; }}
+
+    /* ===== Sidebar ===== */
+    section[data-testid="stSidebar"] {{ background-color: #0b1730; }}
+    section[data-testid="stSidebar"] * {{ color: #e7ecf7 !important; }}
+    section[data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] > div {{
         background-color: #16233f; color: #e7ecf7;
-    }
-    .hero-banner {
+    }}
+
+    /* ===== Hero banner ===== */
+    .hero-banner {{
         background: linear-gradient(120deg, #0d2c66 0%, #123a86 55%, #1b4fb8 100%);
         border-radius: 16px; padding: 28px 32px; color: white; margin-bottom: 22px;
-    }
-    .hero-title { font-size: 28px; font-weight: 800; margin: 0; }
-    .hero-sub { opacity: 0.85; margin-top: 4px; font-size: 14px; }
-    /* Every card below sets its own text color explicitly (with !important)
-       so nothing goes white-on-white or white-on-light when the app is
-       viewed under a dark browser/OS theme after deployment. */
-    .kpi-card, .panel-card {
-        background: white !important; color: #10182c !important;
+    }}
+    .hero-title {{ font-size: 28px; font-weight: 800; margin: 0; }}
+    .hero-sub {{ opacity: 0.85; margin-top: 4px; font-size: 14px; }}
+
+    /* ===== Cards ===== */
+    .kpi-card, .panel-card {{
+        background: {_card} !important; color: {_txt} !important;
         border-radius: 14px; padding: 18px 20px;
-        box-shadow: 0 1px 3px rgba(20,30,60,0.08); border: 1px solid #eef1f8;
+        box-shadow: 0 1px 3px {_shadow}; border: 1px solid {_border};
         margin-bottom: 18px;
-    }
-    .kpi-card table, .panel-card table { color: #10182c !important; width: 100%; }
-    .kpi-card td, .panel-card td, .kpi-card th, .panel-card th { color: #10182c !important; }
-    .kpi-label { color: #6b7484 !important; font-size: 13px; font-weight: 600; }
-    .kpi-value { font-size: 26px; font-weight: 800; color: #10182c !important; margin: 2px 0; }
-    .kpi-sub { color: #8a93a3 !important; font-size: 12px; }
-    .kpi-up { color: #16a34a !important; font-weight: 700; font-size: 12px; }
-    .kpi-down { color: #dc2626 !important; font-weight: 700; font-size: 12px; }
-    .panel-title { font-size: 16px; font-weight: 800; color: #10182c !important; }
-    .panel-sub { color: #8a93a3 !important; font-size: 12.5px; margin-bottom: 10px; }
-    .status-pill {
+    }}
+    .kpi-card table, .panel-card table {{ color: {_txt} !important; width: 100%; }}
+    .kpi-card td, .panel-card td, .kpi-card th, .panel-card th {{ color: {_txt} !important; }}
+    .kpi-label {{ color: {_lbl} !important; font-size: 13px; font-weight: 600; }}
+    .kpi-value {{ font-size: 26px; font-weight: 800; color: {_txt} !important; margin: 2px 0; }}
+    .kpi-sub {{ color: {_sub_c} !important; font-size: 12px; }}
+    .kpi-up {{ color: #16a34a !important; font-weight: 700; font-size: 12px; }}
+    .kpi-down {{ color: #dc2626 !important; font-weight: 700; font-size: 12px; }}
+    .panel-title {{ font-size: 16px; font-weight: 800; color: {_txt} !important; }}
+    .panel-sub {{ color: {_sub_c} !important; font-size: 12.5px; margin-bottom: 10px; }}
+    .status-pill {{
         display:inline-block; padding:3px 10px; border-radius:20px;
         background:#e8f9ee !important; color:#159654 !important; font-size:12px; font-weight:700;
-    }
-    .cat-box {
+    }}
+    .cat-box {{
         border-radius: 10px; padding: 14px; color: white !important; font-weight: 700;
         margin-bottom: 10px;
-    }
-    .alert-box {
+    }}
+    .alert-box {{
         background:#fff4e0 !important; color:#7a4a00 !important; border:1px solid #ffe0a3;
         border-radius:12px; padding:14px 16px; margin-bottom: 14px;
-    }
-    .alert-box b { color:#7a4a00 !important; }
-    .info-box {
+    }}
+    .alert-box b {{ color:#7a4a00 !important; }}
+    .info-box {{
         background:#eaf3ff !important; color:#0b3d8a !important; border:1px solid #cfe4ff;
         border-radius:12px; padding:14px 16px;
-    }
-    .info-box b { color:#0b3d8a !important; }
-    .ai-box {
+    }}
+    .info-box b {{ color:#0b3d8a !important; }}
+    .ai-box {{
         background:#0b1730 !important; color:#e7ecf7 !important; border-radius:14px;
         padding:20px 22px; margin-top:6px;
-    }
-    .ai-box b { color:#7dd3fc; }
-    .ai-box li { margin-bottom: 6px; }
+    }}
+    .ai-box b {{ color:#7dd3fc; }}
+    .ai-box li {{ margin-bottom: 6px; }}
     </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# Floating hamburger — always visible; clicks whichever sidebar button is active
+st.markdown(
+    """
+    <button id="ag-hamburger"
+        onclick="
+            var cc = document.querySelector('[data-testid=stSidebarCollapsedControl]');
+            var cb = document.querySelector('button[data-testid=stSidebarCollapseButton]');
+            if (cc) cc.click(); else if (cb) cb.click();
+        "
+        title="Toggle Sidebar (☰)"
+    >☰</button>
     """,
     unsafe_allow_html=True,
 )
@@ -340,6 +413,93 @@ def compute_category_shares(engine_df: pd.DataFrame):
 
 
 # --------------------------------------------------------------------------
+# RISK DETECTION HELPERS
+# --------------------------------------------------------------------------
+def compute_sensor_anomalies(engine_df: pd.DataFrame) -> pd.DataFrame:
+    """For every sensor column, compute z-score of the last reading vs
+    the engine's own history.  Returns a DataFrame with columns:
+    sensor, label, current, mean, std, z_score, deviation_pct, status."""
+    sensor_cols = [c for c in engine_df.columns if c.startswith("sensor_")]
+    rows = []
+    latest_row = engine_df.iloc[-1]
+    for col in sensor_cols:
+        series = engine_df[col]
+        mean_val = series.mean()
+        std_val  = series.std()
+        current  = float(latest_row[col])
+        z_score  = (current - mean_val) / max(std_val, 1e-9)
+        dev_pct  = (current - mean_val) / max(abs(mean_val), 1e-9) * 100
+        if abs(z_score) > 2.5:
+            status = "Critical"
+        elif abs(z_score) > 1.5:
+            status = "Warning"
+        else:
+            status = "Normal"
+        rows.append({
+            "sensor": col,
+            "label": SENSOR_LABELS.get(col, col),
+            "current": round(current, 3),
+            "mean": round(mean_val, 3),
+            "std": round(std_val, 3),
+            "z_score": round(z_score, 2),
+            "deviation_pct": round(dev_pct, 2),
+            "status": status,
+        })
+    return pd.DataFrame(rows)
+
+
+def compute_failure_risk_score(rul_pred: float, anomaly_df: pd.DataFrame) -> float:
+    """Returns a failure risk score in [0, 100].
+    70 % from RUL proximity, 30 % from sensor anomaly severity."""
+    # RUL component: 0 cycles → 100 risk, 150+ cycles → 0 risk
+    rul_capped = min(max(rul_pred, 0), 150)
+    rul_score  = (1 - rul_capped / 150) * 100
+
+    # Anomaly component: average |z-score| across all sensors, clipped to [0,3]
+    if anomaly_df is not None and not anomaly_df.empty:
+        mean_abs_z    = anomaly_df["z_score"].abs().mean()
+        anomaly_score = min(mean_abs_z / 3, 1) * 100
+    else:
+        anomaly_score = 0
+
+    return round(0.70 * rul_score + 0.30 * anomaly_score, 1)
+
+
+def classify_risk(rul_pred: float):
+    """Returns (label, color, bg_color, icon, description)."""
+    if rul_pred < 30:
+        return ("CRITICAL", "#dc2626", "#fef2f2", "🔴",
+                "Immediate inspection required — engine is at high risk of failure.")
+    elif rul_pred < 80:
+        return ("WARNING", "#d97706", "#fffbeb", "🟡",
+                "Schedule maintenance soon — engine is showing signs of wear.")
+    else:
+        return ("NORMAL", "#16a34a", "#f0fdf4", "🟢",
+                "Engine is operating within normal parameters.")
+
+
+@st.cache_data(show_spinner=False)
+def get_fleet_risk_summary(_df: pd.DataFrame, fd_key: str) -> pd.DataFrame:
+    """Compute failure risk score for every engine unit in the dataset.
+    `fd_key` is only used as a cache-buster string."""
+    rows = []
+    model_, scaler_ = load_model_and_scaler()
+    for uid in sorted(_df["unit"].unique()):
+        eng = _df[_df["unit"] == uid].reset_index(drop=True)
+        if eng.empty:
+            continue
+        rul_arr, _ = predict_rul_batch(model_, scaler_, eng)
+        rul_val    = float(rul_arr[-1])
+        anoms      = compute_sensor_anomalies(eng)
+        risk       = compute_failure_risk_score(rul_val, anoms)
+        label, color, _, icon, _ = classify_risk(rul_val)
+        rows.append({"engine": f"#{int(uid):02d}", "rul": round(rul_val, 1),
+                     "risk_score": risk, "status": label,
+                     "color": color, "icon": icon})
+    return pd.DataFrame(rows)
+
+
+# --------------------------------------------------------------------------
 # SIDEBAR
 # --------------------------------------------------------------------------
 with st.sidebar:
@@ -354,7 +514,7 @@ with st.sidebar:
 
     page = st.radio(
         "Navigation",
-        ["🏠 Dashboard", "📈 Engine Monitoring", "🗄️ Sensor Data", "🔧 Maintenance"],
+        ["🏠 Dashboard", "📈 Engine Monitoring", "🗄️ Sensor Data", "🔧 Maintenance", "⚠️ Risk Detection"],
         label_visibility="collapsed",
         key="nav_page",
     )
@@ -375,6 +535,14 @@ with st.sidebar:
     st.markdown("**System Status**")
     st.markdown("🟢 **System Online**")
     st.caption(f"Last updated: {dt.datetime.now().strftime('%H:%M:%S')}")
+
+    st.markdown("---")
+    st.markdown("**Display Settings**")
+    _dm_lbl = "☀️ Light Mode" if _DM else "🌙 Dark Mode"
+    _dm_help = "Switch to light theme" if _DM else "Switch to dark theme"
+    if st.button(_dm_lbl, use_container_width=True, key="theme_toggle_btn", help=_dm_help):
+        st.session_state.dark_mode = not st.session_state.dark_mode
+        st.rerun()
 
 # --------------------------------------------------------------------------
 # SHARED COMPUTATIONS (based on selected engine/dataset, used across all pages)
@@ -419,6 +587,7 @@ page_titles = {
     "📈 Engine Monitoring": ("Engine Monitoring", "Deep-dive sensor trends for the selected engine"),
     "🗄️ Sensor Data": ("Sensor Data", "Raw sensor readings and descriptive statistics"),
     "🔧 Maintenance": ("Maintenance Center", "Health status, RUL trend and AI-driven recommendations"),
+    "⚠️ Risk Detection": ("Engine Failure Risk Detection", "ML-powered failure risk classification · Normal · Warning · Critical"),
 }
 title_text, sub_text = page_titles[page]
 st.markdown(
@@ -768,6 +937,341 @@ elif page == "🔧 Maintenance":
             </div>""", unsafe_allow_html=True)
 
     render_ai_recommendation_panel(rul_pred, health_label, hpc_change, risk_label, cycle_now)
+
+# ==========================================================================
+# PAGE 5 — RISK DETECTION
+# ==========================================================================
+elif page == "⚠️ Risk Detection":
+
+    risk_label_full, risk_color, risk_bg, risk_icon, risk_desc = classify_risk(rul_pred)
+    anomaly_df = compute_sensor_anomalies(engine_df)
+    failure_risk_score = compute_failure_risk_score(rul_pred, anomaly_df)
+
+    # ------------------------------------------------------------------
+    # 1. RISK CLASSIFICATION BANNER
+    # ------------------------------------------------------------------
+    banner_border = risk_color
+    st.markdown(
+        f"""
+        <div style="
+            background:{risk_bg};
+            border:2.5px solid {banner_border};
+            border-radius:18px;
+            padding:28px 36px;
+            margin-bottom:22px;
+            display:flex;
+            align-items:center;
+            gap:28px;
+        ">
+            <div style="font-size:64px;line-height:1;">{risk_icon}</div>
+            <div style="flex:1;">
+                <div style="font-size:13px;font-weight:600;color:#64748b;letter-spacing:.08em;text-transform:uppercase;">
+                    Engine #{int(engine_id):02d} &nbsp;·&nbsp; {fd_choice} &nbsp;·&nbsp; Cycle {cycle_now}
+                </div>
+                <div style="font-size:38px;font-weight:900;color:{risk_color};margin:4px 0 6px;">
+                    {risk_label_full}
+                </div>
+                <div style="font-size:15px;color:#374151;">{risk_desc}</div>
+            </div>
+            <div style="text-align:right;">
+                <div style="font-size:12px;color:#64748b;font-weight:600;">FAILURE RISK SCORE</div>
+                <div style="font-size:52px;font-weight:900;color:{risk_color};line-height:1;">{failure_risk_score:.0f}<span style="font-size:24px;">%</span></div>
+                <div style="font-size:12px;color:#64748b;margin-top:4px;">Higher = more urgent</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # ------------------------------------------------------------------
+    # 2. KPI ROW
+    # ------------------------------------------------------------------
+    k1, k2, k3, k4 = st.columns(4)
+    critical_count = int((anomaly_df["status"] == "Critical").sum())
+    warning_count  = int((anomaly_df["status"] == "Warning").sum())
+    normal_count   = int((anomaly_df["status"] == "Normal").sum())
+
+    with k1:
+        st.markdown(
+            f"""<div class="kpi-card">
+            <div class="kpi-label">📊 Predicted RUL</div>
+            <div class="kpi-value">{rul_pred:,.0f} cycles</div>
+            <div class="kpi-sub">{'Model prediction' if model_used else 'Heuristic estimate'}</div>
+            </div>""", unsafe_allow_html=True)
+    with k2:
+        st.markdown(
+            f"""<div class="kpi-card">
+            <div class="kpi-label">🔴 Critical Sensors</div>
+            <div class="kpi-value" style="color:#dc2626;">{critical_count}</div>
+            <div class="kpi-sub">Z-score &gt; 2.5 deviation</div>
+            </div>""", unsafe_allow_html=True)
+    with k3:
+        st.markdown(
+            f"""<div class="kpi-card">
+            <div class="kpi-label">🟡 Warning Sensors</div>
+            <div class="kpi-value" style="color:#d97706;">{warning_count}</div>
+            <div class="kpi-sub">Z-score 1.5 – 2.5 deviation</div>
+            </div>""", unsafe_allow_html=True)
+    with k4:
+        st.markdown(
+            f"""<div class="kpi-card">
+            <div class="kpi-label">🟢 Normal Sensors</div>
+            <div class="kpi-value" style="color:#16a34a;">{normal_count}</div>
+            <div class="kpi-sub">Within expected range</div>
+            </div>""", unsafe_allow_html=True)
+
+    # ------------------------------------------------------------------
+    # 3. RISK SCORE GAUGE  +  SENSOR ANOMALY HEATMAP
+    # ------------------------------------------------------------------
+    gc, hc = st.columns([1, 2])
+
+    with gc:
+        st.markdown('<div class="panel-card"><div class="panel-title">📉 Risk Score Gauge</div></div>',
+                    unsafe_allow_html=True)
+        gauge_fig = go.Figure(go.Indicator(
+            mode="gauge+number+delta",
+            value=failure_risk_score,
+            delta={"reference": 50, "increasing": {"color": "#dc2626"}, "decreasing": {"color": "#16a34a"}},
+            number={"suffix": "%", "font": {"size": 30, "color": TEXT_DARK}},
+            gauge={
+                "axis": {"range": [0, 100], "tickcolor": TEXT_DARK, "tickwidth": 1},
+                "bar": {"color": risk_color, "thickness": 0.28},
+                "bgcolor": "#f1f5f9",
+                "bordercolor": "#e2e8f0",
+                "steps": [
+                    {"range": [0, 30],  "color": "#dcfce7"},
+                    {"range": [30, 70], "color": "#fef9c3"},
+                    {"range": [70, 100],"color": "#fee2e2"},
+                ],
+                "threshold": {
+                    "line": {"color": "#7c3aed", "width": 3},
+                    "thickness": 0.8,
+                    "value": failure_risk_score,
+                },
+            },
+            domain={"x": [0, 1], "y": [0, 1]},
+        ))
+        gauge_fig.update_layout(
+            height=320,
+            margin=dict(l=20, r=20, t=40, b=10),
+            paper_bgcolor="white",
+            font=dict(color=TEXT_DARK),
+        )
+        st.plotly_chart(gauge_fig, use_container_width=True, key="risk_gauge")
+
+        # Risk level legend
+        st.markdown(
+            """
+            <div style="display:flex;gap:8px;justify-content:center;margin-top:-10px;">
+                <span style="background:#dcfce7;color:#166534;border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;">0–30 Normal</span>
+                <span style="background:#fef9c3;color:#854d0e;border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;">30–70 Warning</span>
+                <span style="background:#fee2e2;color:#991b1b;border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;">70–100 Critical</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with hc:
+        st.markdown(
+            '<div class="panel-card"><div class="panel-title">🌡️ Sensor Anomaly Heatmap</div>'
+            '<div class="panel-sub">Z-score of each sensor vs. this engine\'s own baseline across all cycles (last 40 cycles shown).</div></div>',
+            unsafe_allow_html=True,
+        )
+        # Build z-score matrix: rows = sensors, cols = cycles (last 40)
+        sensor_cols_heat = [c for c in engine_df.columns if c.startswith("sensor_")]
+        window_df = engine_df.tail(40)
+        z_matrix = []
+        y_labels  = []
+        for col in sensor_cols_heat:
+            series = engine_df[col]          # use full history for stats
+            mu  = series.mean()
+            sig = series.std()
+            z   = ((window_df[col] - mu) / max(sig, 1e-9)).clip(-3, 3)
+            z_matrix.append(z.values)
+            y_labels.append(SENSOR_LABELS.get(col, col))
+        z_matrix = np.array(z_matrix)
+        heat_fig = go.Figure(go.Heatmap(
+            z=z_matrix,
+            x=window_df["cycle"].tolist(),
+            y=y_labels,
+            colorscale=[
+                [0.0,  "#16a34a"],
+                [0.33, "#86efac"],
+                [0.5,  "#fef9c3"],
+                [0.67, "#fbbf24"],
+                [1.0,  "#dc2626"],
+            ],
+            zmid=0,
+            colorbar=dict(title="Z-score", tickfont=dict(color=TEXT_DARK), titlefont=dict(color=TEXT_DARK)),
+            hovertemplate="Sensor: %{y}<br>Cycle: %{x}<br>Z-score: %{z:.2f}<extra></extra>",
+        ))
+        heat_fig.update_layout(
+            height=360,
+            margin=dict(l=10, r=10, t=10, b=10),
+            paper_bgcolor="white",
+            plot_bgcolor="white",
+            font=dict(color=TEXT_DARK),
+            xaxis=dict(title="Engine Cycle", color=TEXT_DARK),
+            yaxis=dict(title="Sensor", color=TEXT_DARK, autorange="reversed"),
+        )
+        st.plotly_chart(heat_fig, use_container_width=True, key="risk_heatmap")
+
+    # ------------------------------------------------------------------
+    # 4. PER-SENSOR RISK TABLE
+    # ------------------------------------------------------------------
+    st.markdown(
+        '<div class="panel-card"><div class="panel-title">🔬 Per-Sensor Anomaly Analysis</div>'
+        '<div class="panel-sub">Current reading vs. engine\'s historical baseline. Sorted by |Z-score| descending.</div></div>',
+        unsafe_allow_html=True,
+    )
+
+    display_df = anomaly_df.sort_values("z_score", key=lambda s: s.abs(), ascending=False).copy()
+
+    def _status_badge(s):
+        if s == "Critical":
+            return "🔴 Critical"
+        elif s == "Warning":
+            return "🟡 Warning"
+        return "🟢 Normal"
+
+    display_df["Risk Level"] = display_df["status"].apply(_status_badge)
+    display_df["Deviation"]  = display_df["deviation_pct"].apply(lambda x: f"{x:+.1f}%")
+    display_df["Z-Score"]    = display_df["z_score"].apply(lambda x: f"{x:+.2f}")
+    show_cols = ["label", "current", "mean", "std", "Z-Score", "Deviation", "Risk Level"]
+    rename_map = {"label": "Sensor", "current": "Current Value", "mean": "Baseline Mean", "std": "Std Dev"}
+    st.dataframe(
+        display_df[show_cols].rename(columns=rename_map),
+        use_container_width=True,
+        height=340,
+        hide_index=True,
+    )
+
+    # ------------------------------------------------------------------
+    # 5. MAINTENANCE ALERT PANEL
+    # ------------------------------------------------------------------
+    st.markdown("### 🚨 Maintenance Action")
+    if risk_label_full == "CRITICAL":
+        st.markdown(
+            f"""
+            <div style="background:#fef2f2;border:2px solid #dc2626;border-radius:14px;padding:22px 26px;margin-bottom:16px;">
+                <div style="font-size:20px;font-weight:900;color:#dc2626;">🔴 CRITICAL ALERT — Immediate Action Required</div>
+                <div style="margin-top:10px;font-size:14px;color:#7f1d1d;">
+                    <b>Engine #{int(engine_id):02d}</b> has a predicted RUL of only <b>{rul_pred:,.0f} cycles</b>
+                    and a failure risk score of <b>{failure_risk_score:.0f}%</b>.
+                </div>
+                <ul style="margin-top:10px;font-size:13.5px;color:#7f1d1d;">
+                    <li>Ground the engine immediately if safety margins cannot be confirmed.</li>
+                    <li>Schedule a borescope inspection within the next <b>{max(1, int(rul_pred * 0.2))} cycles</b>.</li>
+                    <li>Activate spare-parts logistics and downtime planning.</li>
+                    <li>Review HPC/LPC temperature anomalies against past failure signatures.</li>
+                </ul>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    elif risk_label_full == "WARNING":
+        st.markdown(
+            f"""
+            <div style="background:#fffbeb;border:2px solid #d97706;border-radius:14px;padding:22px 26px;margin-bottom:16px;">
+                <div style="font-size:20px;font-weight:900;color:#d97706;">🟡 WARNING — Schedule Maintenance Soon</div>
+                <div style="margin-top:10px;font-size:14px;color:#78350f;">
+                    <b>Engine #{int(engine_id):02d}</b> has a predicted RUL of <b>{rul_pred:,.0f} cycles</b>
+                    and a failure risk score of <b>{failure_risk_score:.0f}%</b>.
+                </div>
+                <ul style="margin-top:10px;font-size:13.5px;color:#78350f;">
+                    <li>Slot this engine into the next scheduled maintenance window.</li>
+                    <li>Increase sensor monitoring frequency over the next 10–15 cycles.</li>
+                    <li>No grounding needed yet — continue standard operations with caution.</li>
+                    <li>Move this engine up the priority review list.</li>
+                </ul>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            f"""
+            <div style="background:#f0fdf4;border:2px solid #16a34a;border-radius:14px;padding:22px 26px;margin-bottom:16px;">
+                <div style="font-size:20px;font-weight:900;color:#16a34a;">🟢 NORMAL — No Immediate Action Required</div>
+                <div style="margin-top:10px;font-size:14px;color:#14532d;">
+                    <b>Engine #{int(engine_id):02d}</b> has a predicted RUL of <b>{rul_pred:,.0f} cycles</b>
+                    and a failure risk score of <b>{failure_risk_score:.0f}%</b>.
+                </div>
+                <ul style="margin-top:10px;font-size:13.5px;color:#14532d;">
+                    <li>Continue standard monitoring cadence.</li>
+                    <li>Re-run risk assessment after the next batch of cycles.</li>
+                    <li>No maintenance action required at this time.</li>
+                </ul>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # ------------------------------------------------------------------
+    # 6. FLEET RISK OVERVIEW
+    # ------------------------------------------------------------------
+    st.markdown(
+        '<div class="panel-card"><div class="panel-title">🌐 Fleet Risk Overview</div>'
+        f'<div class="panel-sub">Failure risk scores for all engines in the {fd_choice} dataset.</div></div>',
+        unsafe_allow_html=True,
+    )
+    with st.spinner("Computing fleet risk scores…"):
+        fleet_df = get_fleet_risk_summary(df, fd_choice)
+
+    if not fleet_df.empty:
+        # Color each bar by its risk status
+        bar_colors = fleet_df["color"].tolist()
+        fleet_fig = go.Figure()
+        fleet_fig.add_trace(go.Bar(
+            x=fleet_df["engine"],
+            y=fleet_df["risk_score"],
+            marker_color=bar_colors,
+            text=fleet_df.apply(lambda r: f"{r['icon']} {r['status']}<br>{r['risk_score']:.0f}%", axis=1),
+            textposition="outside",
+            hovertemplate=(
+                "Engine: %{x}<br>"
+                "Risk Score: %{y:.1f}%<br>"
+                "RUL: %{customdata:.0f} cycles<extra></extra>"
+            ),
+            customdata=fleet_df["rul"].tolist(),
+            cliponaxis=False,
+        ))
+        # Highlight selected engine
+        selected_label = f"#{int(engine_id):02d}"
+        if selected_label in fleet_df["engine"].values:
+            sel_idx  = fleet_df[fleet_df["engine"] == selected_label].index[0]
+            sel_risk = fleet_df.loc[sel_idx, "risk_score"]
+            fleet_fig.add_annotation(
+                x=selected_label, y=sel_risk + 5,
+                text="◀ Selected", showarrow=False,
+                font=dict(color="#7c3aed", size=11, family="sans-serif"),
+            )
+        fleet_fig.add_hline(y=70, line_dash="dash", line_color="#dc2626",
+                             annotation_text="Critical threshold (70%)",
+                             annotation_font_color="#dc2626")
+        fleet_fig.add_hline(y=30, line_dash="dot",  line_color="#d97706",
+                             annotation_text="Warning threshold (30%)",
+                             annotation_font_color="#d97706")
+        fleet_fig.update_layout(**styled_layout(
+            height=400,
+            margin=dict(l=10, r=10, t=40, b=10),
+            xaxis_title="Engine",
+            yaxis_title="Failure Risk Score (%)",
+            yaxis=dict(range=[0, 115], color=TEXT_DARK, gridcolor="#e5e9f2"),
+            bargap=0.35,
+        ))
+        st.plotly_chart(fleet_fig, use_container_width=True, key="fleet_risk_chart")
+
+        # Summary table
+        summary_cols = ["engine", "rul", "risk_score", "status"]
+        summary_rename = {"engine": "Engine", "rul": "Predicted RUL (cycles)",
+                          "risk_score": "Risk Score (%)", "status": "Risk Level"}
+        st.dataframe(
+            fleet_df[summary_cols].rename(columns=summary_rename),
+            use_container_width=True,
+            hide_index=True,
+            height=300,
+        )
 
 st.caption(
     f"AeroGuard · Safer Skies, Smarter Engines · Dataset: {fd_choice} · "
