@@ -124,25 +124,7 @@ st.markdown(
         stroke: #e7ecf7 !important;
     }}
 
-    /* ===== Floating hamburger — always on screen ===== */
-    #ag-hamburger {{
-        position: fixed;
-        top: 14px; left: 14px;
-        z-index: 999999;
-        background: #0b1730;
-        color: #e7ecf7;
-        border: none;
-        border-radius: 10px;
-        padding: 8px 14px;
-        font-size: 20px;
-        cursor: pointer;
-        box-shadow: 0 2px 12px rgba(0,0,0,.50);
-        transition: background .18s, transform .13s;
-        line-height: 1;
-        user-select: none;
-        font-family: sans-serif;
-    }}
-    #ag-hamburger:hover {{ background: #1e3a5f; transform: scale(1.07); }}
+
 
     /* ===== App background ===== */
     .stApp {{ background-color: {_bg}; }}
@@ -207,20 +189,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Floating hamburger — always visible; clicks whichever sidebar button is active
-st.markdown(
-    """
-    <button id="ag-hamburger"
-        onclick="
-            var cc = document.querySelector('[data-testid=stSidebarCollapsedControl]');
-            var cb = document.querySelector('button[data-testid=stSidebarCollapseButton]');
-            if (cc) cc.click(); else if (cb) cb.click();
-        "
-        title="Toggle Sidebar (☰)"
-    >☰</button>
-    """,
-    unsafe_allow_html=True,
-)
 
 # --------------------------------------------------------------------------
 # DATA LOADING 
@@ -1090,6 +1058,9 @@ elif page == "⚠️ Risk Detection":
             z_matrix.append(z.values)
             y_labels.append(SENSOR_LABELS.get(col, col))
         z_matrix = np.array(z_matrix)
+        _dm_heat = st.session_state.get("dark_mode", False)
+        _heat_text = "#e2e8f0" if _dm_heat else TEXT_DARK
+        _heat_bg   = "#1e293b" if _dm_heat else "white"
         heat_fig = go.Figure(go.Heatmap(
             z=z_matrix,
             x=window_df["cycle"].tolist(),
@@ -1102,17 +1073,21 @@ elif page == "⚠️ Risk Detection":
                 [1.0,  "#dc2626"],
             ],
             zmid=0,
-            colorbar=dict(title="Z-score", tickfont=dict(color=TEXT_DARK), titlefont=dict(color=TEXT_DARK)),
+            colorbar=dict(
+                title=dict(text="Z-score", font=dict(color=_heat_text)),
+                tickfont=dict(color=_heat_text),
+            ),
             hovertemplate="Sensor: %{y}<br>Cycle: %{x}<br>Z-score: %{z:.2f}<extra></extra>",
         ))
         heat_fig.update_layout(
             height=360,
             margin=dict(l=10, r=10, t=10, b=10),
-            paper_bgcolor="white",
-            plot_bgcolor="white",
-            font=dict(color=TEXT_DARK),
-            xaxis=dict(title="Engine Cycle", color=TEXT_DARK),
-            yaxis=dict(title="Sensor", color=TEXT_DARK, autorange="reversed"),
+            paper_bgcolor=_heat_bg,
+            plot_bgcolor=_heat_bg,
+            font=dict(color=_heat_text),
+            xaxis=dict(title="Engine Cycle", color=_heat_text, gridcolor="#334155" if _dm_heat else "#e5e9f2"),
+            yaxis=dict(title="Sensor", color=_heat_text, autorange="reversed",
+                       gridcolor="#334155" if _dm_heat else "#e5e9f2"),
         )
         st.plotly_chart(heat_fig, use_container_width=True, key="risk_heatmap")
 
