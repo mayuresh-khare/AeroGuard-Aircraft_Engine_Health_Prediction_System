@@ -148,42 +148,81 @@ st.markdown(
     /* ===== App background ===== */
     .stApp {{ background-color: {_bg}; }}
 
-    /* ===== Sidebar ===== */
-    section[data-testid="stSidebar"] {{ background-color: #0b1730; }}
-    section[data-testid="stSidebar"] * {{ color: #e7ecf7 !important; }}
+    /* ===== Sidebar base ===== */
+    section[data-testid="stSidebar"] {{
+        background-color: #0b1730 !important;
+        /* Override Streamlit CSS custom properties so native widgets stop using white */
+        --background-color: #0b1730;
+        --secondary-background-color: #16233f;
+        --text-color: #e7ecf7;
+    }}
 
-    /* --- Selectbox: container + every inner layer --- */
-    section[data-testid="stSidebar"] [data-baseweb="select"] > div {{
-        background-color: #16233f  !important;
-        border-color:     #2d4a7a  !important;
-        color:            #e7ecf7  !important;
+    /* Force ALL sidebar text to be light — deepest wildcard */
+    section[data-testid="stSidebar"],
+    section[data-testid="stSidebar"] * {{
+        color: #e7ecf7 !important;
     }}
-    section[data-testid="stSidebar"] [data-baseweb="select"] div,
-    section[data-testid="stSidebar"] [data-baseweb="select"] span,
-    section[data-testid="stSidebar"] [data-baseweb="select"] p {{
+
+    /* Clear white/grey backgrounds from ALL intermediate Streamlit wrapper elements */
+    section[data-testid="stSidebar"] .element-container,
+    section[data-testid="stSidebar"] .stMarkdown,
+    section[data-testid="stSidebar"] .stSelectbox,
+    section[data-testid="stSidebar"] .stSelectbox > div,
+    section[data-testid="stSidebar"] .stSelectbox > div > div,
+    section[data-testid="stSidebar"] [data-testid="stWidgetLabel"],
+    section[data-testid="stSidebar"] [data-testid="stWidgetLabel"] * {{
         background-color: transparent !important;
-        color:            #e7ecf7   !important;
+        color: #e7ecf7 !important;
     }}
-    /* Placeholder text */
-    section[data-testid="stSidebar"] [data-baseweb="select"] [data-testid="stSelectboxVirtualDropdown"],
-    section[data-testid="stSidebar"] [data-baseweb="select"] input::placeholder {{
-        color: #94a3b8 !important;
+
+    /* ---- The actual select INPUT box ---- */
+    section[data-testid="stSidebar"] [data-baseweb="select"] > div {{
+        background-color: #1a2f54 !important;
+        border: 1.5px solid #3b5ea6 !important;
+        border-radius: 8px !important;
     }}
-    /* Typed search input */
+
+    /* ---- Every layer inside the select (value, arrow, search) ---- */
+    section[data-testid="stSidebar"] [data-baseweb="select"] > div > div,
+    section[data-testid="stSidebar"] [data-baseweb="select"] > div > div > div,
+    section[data-testid="stSidebar"] [data-baseweb="select"] > div > div > div > div,
+    section[data-testid="stSidebar"] [data-baseweb="select"] > div > div > div > div > div {{
+        background-color: transparent !important;
+        color: #e7ecf7 !important;
+    }}
+
+    /* ---- Spans that hold the displayed value text ---- */
+    section[data-testid="stSidebar"] [data-baseweb="select"] span {{
+        color: #e7ecf7 !important;
+        background-color: transparent !important;
+    }}
+
+    /* ---- Search / type-ahead input ---- */
     section[data-testid="stSidebar"] [data-baseweb="select"] input {{
-        color:        #e7ecf7 !important;
-        caret-color:  #e7ecf7 !important;
+        color:       #e7ecf7 !important;
+        caret-color: #e7ecf7 !important;
+        background:  transparent !important;
     }}
-    /* Dropdown chevron SVG */
+    section[data-testid="stSidebar"] [data-baseweb="select"] input::placeholder {{
+        color: #7a9fd4 !important;
+    }}
+
+    /* ---- Chevron ▾ arrow SVG ---- */
     section[data-testid="stSidebar"] [data-baseweb="select"] svg {{
-        fill: #e7ecf7 !important;
+        fill:   #e7ecf7 !important;
+        stroke: #e7ecf7 !important;
     }}
-    /* Dropdown list (portal, rendered outside sidebar) */
-    [data-baseweb="popover"] [role="option"],
-    [data-baseweb="popover"] [role="listbox"] {{
+
+    /* ---- Dropdown list (rendered as portal OUTSIDE sidebar) ---- */
+    [data-baseweb="popover"] {{ background-color: #16233f !important; }}
+    [data-baseweb="popover"] * {{ color: #e7ecf7 !important; }}
+    [data-baseweb="menu"] {{ background-color: #16233f !important; }}
+    [data-baseweb="menu"] li,
+    [data-baseweb="popover"] [role="option"] {{
         background-color: #16233f !important;
         color:            #e7ecf7 !important;
     }}
+    [data-baseweb="menu"] li:hover,
     [data-baseweb="popover"] [role="option"]:hover,
     [data-baseweb="popover"] [aria-selected="true"] {{
         background-color: #1e3a5f !important;
