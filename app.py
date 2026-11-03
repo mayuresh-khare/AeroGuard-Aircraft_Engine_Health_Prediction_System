@@ -599,69 +599,83 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # ---- Theme Toggle — custom pill button ----
+    # ---- Theme Toggle — custom pill + scoped cursor fix ----
     _is_dark  = st.session_state.get("dark_mode", False)
-    _tog_bg   = "#1e3a5f" if _is_dark else "#e2e8f0"
-    _knob_pos = "calc(100% - 30px)" if _is_dark else "4px"
-    _knob_bg  = "#f8fafc"
+    _tog_bg   = "#1e3a5f" if _is_dark else "#c7d8f0"
+    _knob_pos = "calc(100% - 28px)" if _is_dark else "3px"
     _tog_icon = "🌙" if _is_dark else "☀️"
     _tog_lbl  = "Dark Mode" if _is_dark else "Light Mode"
-    _lbl_col  = "#e2e8f0" if _is_dark else "#334155"
+    _lbl_col  = "#e2e8f0" if _is_dark else "#c9dff7"
 
+    # Visual pill (purely decorative — no pointer events on it)
     st.markdown(
         f"""
         <style>
-        /* Hide the real Streamlit button — we keep it for click logic */
-        div[data-testid="stButton"] > button[kind="secondary"]#theme_toggle_btn_real {{
-            display: none;
+        /* ── Theme-toggle pill: no text cursor, no accidental pointer zone ── */
+        .theme-pill {{
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #16233f;
+            border-radius: 12px;
+            padding: 10px 14px;
+            border: 1px solid #2a3f6a;
+            pointer-events: none;        /* let clicks fall through to the real button */
+            user-select: none;           /* prevent text-selection cursor */
+            -webkit-user-select: none;
+            margin-bottom: 2px;
+        }}
+        .theme-pill .track {{
+            position: relative;
+            width: 50px; height: 26px;
+            flex-shrink: 0;
+            background: {_tog_bg};
+            border-radius: 13px;
+            border: 1.5px solid #3b5ea6;
+        }}
+        .theme-pill .knob {{
+            position: absolute;
+            top: 3px; left: {_knob_pos};
+            width: 22px; height: 20px;
+            background: #f8fafc;
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 12px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.3);
+        }}
+        .theme-pill .tog-label {{
+            font-size: 13px;
+            font-weight: 700;
+            color: {_lbl_col};
+        }}
+
+        /* ── Invisible overlay button: full pointer cursor, no text cursor ── */
+        section[data-testid="stSidebar"]
+            div[data-testid="stButton"]:has(button[data-testid="theme_toggle_btn"]) {{
+            margin-top: -54px;
+            position: relative;
+            z-index: 5;
+        }}
+        section[data-testid="stSidebar"]
+            button[data-testid="theme_toggle_btn"] {{
+            opacity: 0 !important;
+            height: 50px !important;
+            cursor: pointer !important;
+            user-select: none !important;
+            -webkit-user-select: none !important;
         }}
         </style>
-        <div style="margin-bottom:4px;font-size:12px;font-weight:600;
-                    color:#94a3b8;letter-spacing:.06em;text-transform:uppercase;">
-            Display Settings
-        </div>
-        <div style="
-            display:flex; align-items:center; gap:10px;
-            background:#16233f; border-radius:12px;
-            padding:10px 14px; margin-bottom:2px;
-            border:1px solid #2a3f6a;
-        ">
-            <div style="
-                position:relative; width:52px; height:26px; flex-shrink:0;
-                background:{_tog_bg}; border-radius:13px;
-                transition:background .3s; border:1.5px solid #3b5ea6;
-            ">
-                <div style="
-                    position:absolute; top:3px; left:{_knob_pos};
-                    width:24px; height:20px; background:{_knob_bg};
-                    border-radius:10px; transition:left .3s;
-                    display:flex; align-items:center; justify-content:center;
-                    font-size:12px; box-shadow:0 1px 4px rgba(0,0,0,.25);
-                ">{_tog_icon}</div>
-            </div>
-            <span style="font-size:13px; font-weight:700; color:{_lbl_col};">{_tog_lbl}</span>
+        <div class="theme-pill">
+            <div class="track"><div class="knob">{_tog_icon}</div></div>
+            <span class="tog-label">{_tog_lbl}</span>
         </div>
         """,
         unsafe_allow_html=True,
     )
-    # Invisible full-width Streamlit button that handles the actual click
+    # Real (transparent) Streamlit button that handles the click
     if st.button("Toggle Theme", use_container_width=True, key="theme_toggle_btn"):
         st.session_state.dark_mode = not st.session_state.dark_mode
         st.rerun()
-    # Push the real button visually behind / below the custom pill
-    st.markdown(
-        """<style>
-        section[data-testid="stSidebar"] div[data-testid="stButton"] button {
-            margin-top: -56px !important;
-            opacity: 0 !important;
-            height: 52px !important;
-            cursor: pointer !important;
-            position: relative !important;
-            z-index: 10 !important;
-        }
-        </style>""",
-        unsafe_allow_html=True,
-    )
 
 # --------------------------------------------------------------------------
 # SHARED COMPUTATIONS (based on selected engine/dataset, used across all pages)
