@@ -598,12 +598,71 @@ with st.sidebar:
     st.caption(f"Last updated: {dt.datetime.now().strftime('%H:%M:%S')}")
 
     st.markdown("---")
-    st.markdown("**Display Settings**")
-    _dm_lbl = "☀️ Light Mode" if _DM else "🌙 Dark Mode"
-    _dm_help = "Switch to light theme" if _DM else "Switch to dark theme"
-    if st.button(_dm_lbl, use_container_width=True, key="theme_toggle_btn", help=_dm_help):
+
+    # ---- Theme Toggle — custom pill button ----
+    _is_dark  = st.session_state.get("dark_mode", False)
+    _tog_bg   = "#1e3a5f" if _is_dark else "#e2e8f0"
+    _knob_pos = "calc(100% - 30px)" if _is_dark else "4px"
+    _knob_bg  = "#f8fafc"
+    _tog_icon = "🌙" if _is_dark else "☀️"
+    _tog_lbl  = "Dark Mode" if _is_dark else "Light Mode"
+    _lbl_col  = "#e2e8f0" if _is_dark else "#334155"
+
+    st.markdown(
+        f"""
+        <style>
+        /* Hide the real Streamlit button — we keep it for click logic */
+        div[data-testid="stButton"] > button[kind="secondary"]#theme_toggle_btn_real {{
+            display: none;
+        }}
+        </style>
+        <div style="margin-bottom:4px;font-size:12px;font-weight:600;
+                    color:#94a3b8;letter-spacing:.06em;text-transform:uppercase;">
+            Display Settings
+        </div>
+        <div style="
+            display:flex; align-items:center; gap:10px;
+            background:#16233f; border-radius:12px;
+            padding:10px 14px; margin-bottom:2px;
+            border:1px solid #2a3f6a;
+        ">
+            <div style="
+                position:relative; width:52px; height:26px; flex-shrink:0;
+                background:{_tog_bg}; border-radius:13px;
+                transition:background .3s; border:1.5px solid #3b5ea6;
+            ">
+                <div style="
+                    position:absolute; top:3px; left:{_knob_pos};
+                    width:24px; height:20px; background:{_knob_bg};
+                    border-radius:10px; transition:left .3s;
+                    display:flex; align-items:center; justify-content:center;
+                    font-size:12px; box-shadow:0 1px 4px rgba(0,0,0,.25);
+                ">{_tog_icon}</div>
+            </div>
+            <span style="font-size:13px; font-weight:700; color:{_lbl_col};">{_tog_lbl}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    # Invisible full-width Streamlit button that handles the actual click
+    if st.button("Toggle Theme", use_container_width=True, key="theme_toggle_btn",
+                 help="Switch between Dark and Light mode"):
         st.session_state.dark_mode = not st.session_state.dark_mode
         st.rerun()
+    # Push the real button visually behind / below the custom pill
+    st.markdown(
+        """<style>
+        section[data-testid="stSidebar"] div[data-testid="stButton"] button {
+            margin-top: -56px !important;
+            opacity: 0 !important;
+            height: 52px !important;
+            cursor: pointer !important;
+            position: relative !important;
+            z-index: 10 !important;
+        }
+        </style>""",
+        unsafe_allow_html=True,
+    )
 
 # --------------------------------------------------------------------------
 # SHARED COMPUTATIONS (based on selected engine/dataset, used across all pages)
