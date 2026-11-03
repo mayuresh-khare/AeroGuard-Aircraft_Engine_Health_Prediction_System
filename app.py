@@ -597,64 +597,68 @@ with st.sidebar:
     st.markdown("🟢 **System Online**")
     st.caption(f"Last updated: {dt.datetime.now().strftime('%H:%M:%S')}")
 
-    st.markdown("---")
+# --------------------------------------------------------------------------
+# THEME TOGGLE — fixed top-right icon button
+# --------------------------------------------------------------------------
+_is_dark   = st.session_state.get("dark_mode", False)
+_btn_icon  = "🌙" if not _is_dark else "☀️"   # moon = switch TO dark, sun = switch TO light
+_btn_title = "Switch to Dark Mode" if not _is_dark else "Switch to Light Mode"
 
-    # ---- Theme Toggle — styled real button ----
-    _is_dark  = st.session_state.get("dark_mode", False)
-    _tog_bg   = "#1e3a5f" if _is_dark else "#c7d8f0"
-    _knob_pos = "calc(100% - 28px)" if _is_dark else "3px"
-    _tog_icon = "🌙" if _is_dark else "☀️"
-    _tog_lbl  = "Dark Mode" if _is_dark else "Light Mode"
+st.markdown(
+    f"""
+    <style>
+    /* ── Smooth colour transitions on the whole app ── */
+    .stApp, section[data-testid="stSidebar"],
+    .kpi-card, .panel-card, .hero-banner {{
+        transition: background-color 0.35s ease, color 0.35s ease,
+                    border-color 0.35s ease !important;
+    }}
 
-    # Inject CSS that turns THIS button into the pill — keyed by data-testid
-    st.markdown(
-        f"""<style>
-        section[data-testid="stSidebar"]
-            button[data-testid="theme_toggle_btn"] {{
-            background:    #16233f !important;
-            border:        1px solid #2a3f6a !important;
-            border-radius: 12px !important;
-            padding:       10px 14px !important;
-            height:        auto !important;
-            cursor:        pointer !important;
-            user-select:   none !important;
-            width:         100% !important;
-            text-align:    left !important;
-            color:         transparent !important;   /* hide default label */
-            font-size:     0 !important;
-            position:      relative !important;
-        }}
-        section[data-testid="stSidebar"]
-            button[data-testid="theme_toggle_btn"]::before {{
-            content: "";
-            display: inline-block;
-            width: 50px; height: 26px;
-            background: {_tog_bg};
-            border-radius: 13px;
-            border: 1.5px solid #3b5ea6;
-            vertical-align: middle;
-            position: relative;
-        }}
-        section[data-testid="stSidebar"]
-            button[data-testid="theme_toggle_btn"]::after {{
-            content: "{_tog_icon}  {_tog_lbl}";
-            font-size: 13px !important;
-            font-weight: 700 !important;
-            color: #e2e8f0 !important;
-            margin-left: 10px;
-            vertical-align: middle;
-        }}
-        section[data-testid="stSidebar"]
-            button[data-testid="theme_toggle_btn"]:hover {{
-            background: #1e2f50 !important;
-            border-color: #3b5ea6 !important;
-        }}
-        </style>""",
-        unsafe_allow_html=True,
-    )
-    if st.button(".", use_container_width=True, key="theme_toggle_btn"):
-        st.session_state.dark_mode = not st.session_state.dark_mode
-        st.rerun()
+    /* ── Fixed top-right theme button container ── */
+    div[data-testid="stButton"]:has(button[data-testid="theme_fab"]) {{
+        position:  fixed !important;
+        top:       12px  !important;
+        right:     70px  !important;
+        z-index:   99999 !important;
+        width:     auto  !important;
+    }}
+
+    /* ── The button itself — round icon pill ── */
+    button[data-testid="theme_fab"] {{
+        width:         44px  !important;
+        height:        44px  !important;
+        border-radius: 50%   !important;
+        padding:       0     !important;
+        font-size:     20px  !important;
+        line-height:   44px  !important;
+        text-align:    center !important;
+        background:    {'#1e293b' if _is_dark else '#ffffff'} !important;
+        color:         {'#f8fafc' if _is_dark else '#0f172a'} !important;
+        border:        2px solid {'#3b5ea6' if _is_dark else '#cbd5e1'} !important;
+        box-shadow:    0 2px 12px rgba(0,0,0,0.25) !important;
+        cursor:        pointer  !important;
+        transition:    background 0.3s, box-shadow 0.3s, transform 0.2s !important;
+        user-select:   none !important;
+        display:       flex !important;
+        align-items:   center !important;
+        justify-content: center !important;
+    }}
+    button[data-testid="theme_fab"]:hover {{
+        box-shadow: 0 4px 20px rgba(0,0,0,0.35) !important;
+        transform:  scale(1.1) !important;
+        background: {'#334155' if _is_dark else '#f1f5f9'} !important;
+    }}
+    button[data-testid="theme_fab"]:active {{
+        transform: scale(0.95) !important;
+    }}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+if st.button(_btn_icon, key="theme_fab"):
+    st.session_state.dark_mode = not st.session_state.dark_mode
+    st.rerun()
 
 # --------------------------------------------------------------------------
 # SHARED COMPUTATIONS (based on selected engine/dataset, used across all pages)
