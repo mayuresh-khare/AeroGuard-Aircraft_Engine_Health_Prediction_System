@@ -575,7 +575,7 @@ with st.sidebar:
 
     page = st.radio(
         "Navigation",
-        ["🏠 Dashboard", "📈 Engine Monitoring", "🗄️ Sensor Data", "🔧 Maintenance", "⚠️ Risk Detection"],
+        ["🏠 Dashboard", "📈 Engine Monitoring", "🗄️ Sensor Data", "🔧 Maintenance", "⚠️ Risk Detection", "🔍 Anomaly Detection"],
         label_visibility="collapsed",
         key="nav_page",
     )
@@ -649,6 +649,7 @@ page_titles = {
     "🗄️ Sensor Data": ("Sensor Data", "Raw sensor readings and descriptive statistics"),
     "🔧 Maintenance": ("Maintenance Center", "Health status, RUL trend and AI-driven recommendations"),
     "⚠️ Risk Detection": ("Engine Failure Risk Detection", "ML-powered failure risk classification · Normal · Warning · Critical"),
+    "🔍 Anomaly Detection": ("Sensor Anomaly Detection", "Identify abnormal sensor readings · ML-based z-score & trend analysis"),
 }
 title_text, sub_text = page_titles[page]
 st.markdown(
@@ -1340,6 +1341,588 @@ elif page == "⚠️ Risk Detection":
             hide_index=True,
             height=300,
         )
+
+# ==========================================================================
+# PAGE 6 — SENSOR ANOMALY DETECTION
+# ==========================================================================
+elif page == "🔍 Anomaly Detection":
+
+    # -----------------------------------------------------------------------
+    # HELPER: rolling z-score anomaly detection
+    # -----------------------------------------------------------------------
+    def rolling_anomaly(series: pd.Series, window: int = 20):
+        """
+        Compute a rolling z-score for each point using a backward window.
+        Returns a Series of z-scores (clipped to ±4).
+        """
+        roll_mean = series.rolling(window, min_periods=5).mean()
+        roll_std  = series.rolling(window, min_periods=5).std().fillna(1e-9)
+        z = (series - roll_mean) / roll_std.clip(lower=1e-9)
+        return z.clip(-4, 4)
+
+    def classify_sensor_anomaly(z: float) -> tuple:
+        """Return (status, color, icon) based on z-score magnitude."""
+        if abs(z) > 2.5:
+            return "Critical", "#dc2626", "🔴"
+        elif abs(z) > 1.5:
+            return "Warning",  "#d97706", "🟡"
+        else:
+            return "Normal",   "#16a34a", "🟢"
+
+    def compute_full_anomaly_report(eng_df: pd.DataFrame, window: int = 20) -> pd.DataFrame:
+        """
+        For every sensor, compute:
+        - historical mean / std (global baseline)
+        - latest value & its global z-score
+        - rolling z-score at the latest point
+        - trend direction (rising / falling / stable over last 10 cycles)
+        - anomaly status (Critical / Warning / Normal)
+        """
+        sensor_cols = [c for c in eng_df.columns if c.startswith("sensor_")]
+        rows = []
+        latest_row = eng_df.iloc[-1]
+        recent_10  = eng_df.tail(10)
+        for col in sensor_cols:
+            series  = eng_df[col]
+            mean_v  = series.mean()
+            std_v   = series.std()
+            current = float(latest_row[col])
+            # Global z-score
+            g_z     = (current - mean_v) / max(std_v, 1e-9)
+            # Rolling z-score (more sensitive to sudden spikes)
+            roll_z_series = rolling_anomaly(series, window)
+            r_z     = float(roll_z_series.iloc[-1]) if not roll_z_series.empty else g_z
+            # Trend: slope of last 10 cycles normalised to % per cycle
+            if len(recent_10) >= 3:
+                x = np.arange(len(recent_10))
+                y = recent_10[col].values
+                slope = np.polyfit(x, y, 1)[0]
+                trend_pct = slope / max(abs(mean_v), 1e-6) * 100
+                if trend_pct > 0.05:
+                    trend = "↑ Rising"
+                elif trend_pct < -0.05:
+                    trend = "↓ Falling"
+                else:
+                    trend = "→ Stable"
+            else:
+                trend, trend_pct = "→ Stable", 0.0
+            # Use the larger of global z and rolling z for status classification
+            worst_z = g_z if abs(g_z) >= abs(r_z) else r_z
+            status, color, icon = classify_sensor_anomaly(worst_z)
+            dev_pct = (current - mean_v) / max(abs(mean_v), 1e-9) * 100
+            rows.append({
+                "sensor":      col,
+                "label":       SENSOR_LABELS.get(col, col),
+                "category":    next((c for c, sl in CATEGORY_MAP.items() if col in sl), "Other"),
+                "current":     round(current, 3),
+                "mean":        round(mean_v, 3),
+                "std":         round(std_v, 3),
+                "global_z":    round(g_z, 2),
+                "rolling_z":   round(r_z, 2),
+                "worst_z":     round(worst_z, 2),
+                "deviation_pct": round(dev_pct, 2),
+                "trend":       trend,
+                "trend_pct":   round(trend_pct, 4),
+                "status":      status,
+                "color":       color,
+                "icon":        icon,
+            })
+        return pd.DataFrame(rows)
+
+    def engine_condition_verdict(report_df: pd.DataFrame, rul_v: float) -> tuple:
+        """
+        Combine sensor anomaly counts with RUL to give an overall engine condition.
+        Returns (verdict_str, color, icon, description).
+        """
+        n_crit = (report_df["status"] == "Critical").sum()
+        n_warn = (report_df["status"] == "Warning").sum()
+        if rul_v < 30 or n_crit >= 3:
+            return ("CRITICAL ENGINE CONDITION", "#dc2626", "🔴",
+                    f"{n_crit} critical sensor(s) + RUL ≈ {rul_v:.0f} cycles — immediate attention required.")
+        elif rul_v < 80 or n_crit >= 1 or n_warn >= 4:
+            return ("DEGRADED ENGINE CONDITION", "#d97706", "🟡",
+                    f"{n_crit} critical / {n_warn} warning sensor(s) + RUL ≈ {rul_v:.0f} cycles — plan maintenance.")
+        else:
+            return ("HEALTHY ENGINE CONDITION", "#16a34a", "🟢",
+                    f"Sensors reading normally · RUL ≈ {rul_v:.0f} cycles — continue standard operations.")
+
+    # -----------------------------------------------------------------------
+    # COMPUTE ANOMALY REPORT
+    # -----------------------------------------------------------------------
+    with st.spinner("Running anomaly detection…"):
+        anom_report = compute_full_anomaly_report(engine_df)
+
+    verdict_str, verdict_color, verdict_icon, verdict_desc = engine_condition_verdict(anom_report, rul_pred)
+
+    n_crit_a = int((anom_report["status"] == "Critical").sum())
+    n_warn_a = int((anom_report["status"] == "Warning").sum())
+    n_norm_a = int((anom_report["status"] == "Normal").sum())
+
+    # -----------------------------------------------------------------------
+    # SECTION 1 — ENGINE CONDITION VERDICT BANNER
+    # -----------------------------------------------------------------------
+    st.markdown(
+        f"""
+        <div style="
+            background:{'#fef2f2' if verdict_color=='#dc2626' else '#fffbeb' if verdict_color=='#d97706' else '#f0fdf4'};
+            border: 2.5px solid {verdict_color};
+            border-radius: 18px; padding: 26px 36px; margin-bottom: 22px;
+            display: flex; align-items: center; gap: 28px;
+        ">
+            <div style="font-size:60px;line-height:1;">{verdict_icon}</div>
+            <div style="flex:1;">
+                <div style="font-size:12px;font-weight:600;color:#64748b;letter-spacing:.08em;text-transform:uppercase;">
+                    Engine #{int(engine_id):02d} &nbsp;·&nbsp; {fd_choice} &nbsp;·&nbsp; Cycle {cycle_now}
+                </div>
+                <div style="font-size:32px;font-weight:900;color:{verdict_color};margin:4px 0 6px;">
+                    {verdict_str}
+                </div>
+                <div style="font-size:14px;color:#374151;">{verdict_desc}</div>
+            </div>
+            <div style="text-align:right;min-width:130px;">
+                <div style="font-size:11px;color:#64748b;font-weight:600;">ANOMALOUS SENSORS</div>
+                <div style="font-size:44px;font-weight:900;color:{verdict_color};line-height:1;">
+                    {n_crit_a + n_warn_a}
+                    <span style="font-size:20px;">/ {len(anom_report)}</span>
+                </div>
+                <div style="font-size:11px;color:#64748b;margin-top:4px;">total sensors checked</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # -----------------------------------------------------------------------
+    # SECTION 2 — KPI ROW
+    # -----------------------------------------------------------------------
+    a1, a2, a3, a4, a5 = st.columns(5)
+    with a1:
+        st.markdown(
+            f"""<div class="kpi-card">
+            <div class="kpi-label">🔴 Critical Sensors</div>
+            <div class="kpi-value" style="color:#dc2626;">{n_crit_a}</div>
+            <div class="kpi-sub">|Z| &gt; 2.5 — abnormal</div>
+            </div>""", unsafe_allow_html=True)
+    with a2:
+        st.markdown(
+            f"""<div class="kpi-card">
+            <div class="kpi-label">🟡 Warning Sensors</div>
+            <div class="kpi-value" style="color:#d97706;">{n_warn_a}</div>
+            <div class="kpi-sub">|Z| 1.5 – 2.5 — elevated</div>
+            </div>""", unsafe_allow_html=True)
+    with a3:
+        st.markdown(
+            f"""<div class="kpi-card">
+            <div class="kpi-label">🟢 Normal Sensors</div>
+            <div class="kpi-value" style="color:#16a34a;">{n_norm_a}</div>
+            <div class="kpi-sub">Within expected range</div>
+            </div>""", unsafe_allow_html=True)
+    with a4:
+        rising_count = int((anom_report["trend"] == "↑ Rising").sum())
+        st.markdown(
+            f"""<div class="kpi-card">
+            <div class="kpi-label">↑ Rising Trends</div>
+            <div class="kpi-value" style="color:#7c3aed;">{rising_count}</div>
+            <div class="kpi-sub">Sensors trending upward</div>
+            </div>""", unsafe_allow_html=True)
+    with a5:
+        worst_sensor_row = anom_report.loc[anom_report["worst_z"].abs().idxmax()]
+        st.markdown(
+            f"""<div class="kpi-card">
+            <div class="kpi-label">⚡ Worst Anomaly</div>
+            <div class="kpi-value" style="font-size:18px;color:{worst_sensor_row['color']};">
+                {worst_sensor_row['icon']} {worst_sensor_row['label'][:18]}
+            </div>
+            <div class="kpi-sub">Z = {worst_sensor_row['worst_z']:+.2f}</div>
+            </div>""", unsafe_allow_html=True)
+
+    st.markdown("<br/>", unsafe_allow_html=True)
+
+    # -----------------------------------------------------------------------
+    # SECTION 3 — ANOMALY STATUS GRID  (sensor cards)
+    # -----------------------------------------------------------------------
+    st.markdown(
+        '<div class="panel-card"><div class="panel-title">🔬 Sensor-by-Sensor Anomaly Status</div>'
+        '<div class="panel-sub">Current reading vs. historical baseline. Colour-coded by anomaly severity.</div></div>',
+        unsafe_allow_html=True,
+    )
+
+    # Sort: critical first, then warning, then normal; within group by |z|
+    sorted_report = anom_report.sort_values(
+        ["status", "worst_z"],
+        key=lambda col: col.map({"Critical": 0, "Warning": 1, "Normal": 2}) if col.name == "status" else col.abs(),
+        ascending=[True, False]
+    ).reset_index(drop=True)
+
+    COLS_PER_ROW = 4
+    rows_list = [sorted_report.iloc[i:i+COLS_PER_ROW] for i in range(0, len(sorted_report), COLS_PER_ROW)]
+    for row_chunk in rows_list:
+        grid_cols = st.columns(COLS_PER_ROW)
+        for col_idx, (_, sensor_row) in enumerate(row_chunk.iterrows()):
+            bg_map  = {"Critical": "#fff1f2", "Warning": "#fffbeb", "Normal": "#f0fdf4"}
+            brd_map = {"Critical": "#fca5a5", "Warning": "#fcd34d", "Normal": "#86efac"}
+            bg  = bg_map[sensor_row["status"]]
+            brd = brd_map[sensor_row["status"]]
+            with grid_cols[col_idx]:
+                st.markdown(
+                    f"""<div style="background:{bg};border:1.5px solid {brd};border-radius:12px;
+                        padding:14px 16px;margin-bottom:12px;">
+                        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;">
+                            {sensor_row['category']}
+                        </div>
+                        <div style="font-size:14px;font-weight:800;color:#0f172a;margin:4px 0 2px;line-height:1.2;">
+                            {sensor_row['label']}
+                        </div>
+                        <div style="font-size:11px;color:#64748b;margin-bottom:8px;">{sensor_row['sensor']}</div>
+                        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                            <span style="background:{sensor_row['color']};color:white;border-radius:8px;
+                                padding:2px 8px;font-size:11px;font-weight:700;">
+                                {sensor_row['icon']} {sensor_row['status']}
+                            </span>
+                            <span style="font-size:11px;color:#64748b;">{sensor_row['trend']}</span>
+                        </div>
+                        <div style="font-size:13px;color:#0f172a;">
+                            <b>Current:</b> {sensor_row['current']:,.3g}
+                            &nbsp;·&nbsp; <b>Mean:</b> {sensor_row['mean']:,.3g}
+                        </div>
+                        <div style="font-size:12px;color:{sensor_row['color']};font-weight:700;margin-top:4px;">
+                            Z-score: {sensor_row['worst_z']:+.2f}
+                            &nbsp;·&nbsp; Dev: {sensor_row['deviation_pct']:+.1f}%
+                        </div>
+                    </div>""",
+                    unsafe_allow_html=True,
+                )
+
+    # -----------------------------------------------------------------------
+    # SECTION 4 — ROLLING Z-SCORE CHART  +  CATEGORY HEALTH RADAR
+    # -----------------------------------------------------------------------
+    rc1, rc2 = st.columns([2, 1])
+
+    with rc1:
+        st.markdown(
+            '<div class="panel-card"><div class="panel-title">📈 Rolling Anomaly Score Over Time</div>'
+            '<div class="panel-sub">Rolling 20-cycle window z-score for the most anomalous sensors. '
+            'Values outside ±1.5 (dashed lines) indicate elevated deviation.</div></div>',
+            unsafe_allow_html=True,
+        )
+        # Pick the top 5 most anomalous sensors
+        top_sensors = anom_report.nlargest(5, "worst_z", keep="all") if len(anom_report) >= 5 else anom_report
+        # Also include sensors with worst (most negative) z
+        bottom_sensors = anom_report.nsmallest(3, "worst_z", keep="all")
+        highlight_sensors = pd.concat([top_sensors, bottom_sensors]).drop_duplicates("sensor").head(6)
+
+        PALETTE = ["#2563eb", "#dc2626", "#d97706", "#7c3aed", "#16a34a", "#0d9488"]
+        roll_fig = go.Figure()
+        for i, (_, sr) in enumerate(highlight_sensors.iterrows()):
+            col_key = sr["sensor"]
+            rz = rolling_anomaly(engine_df[col_key], window=20)
+            roll_fig.add_trace(go.Scatter(
+                x=engine_df["cycle"], y=rz,
+                name=sr["label"],
+                line=dict(color=PALETTE[i % len(PALETTE)], width=2),
+                hovertemplate=f"{sr['label']}: %{{y:.2f}} z<br>Cycle: %{{x}}<extra></extra>",
+            ))
+
+        # Warning / Critical threshold lines
+        for threshold, dash_, color_, label_ in [
+            (1.5,  "dash",  "#d97706", "Warning (+1.5)"),
+            (-1.5, "dash",  "#d97706", "Warning (−1.5)"),
+            (2.5,  "dot",   "#dc2626", "Critical (+2.5)"),
+            (-2.5, "dot",   "#dc2626", "Critical (−2.5)"),
+        ]:
+            roll_fig.add_hline(
+                y=threshold, line_dash=dash_, line_color=color_,
+                annotation_text=label_, annotation_font_color=color_,
+                annotation_font_size=10,
+            )
+
+        roll_fig.update_layout(**styled_layout(
+            height=360, margin=dict(l=10, r=10, t=20, b=10),
+            xaxis_title="Engine Cycle",
+            yaxis_title="Rolling Z-Score",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        ))
+        st.plotly_chart(roll_fig, use_container_width=True, key="anom_roll_chart")
+
+    with rc2:
+        st.markdown(
+            '<div class="panel-card"><div class="panel-title">🎯 Category Health Radar</div>'
+            '<div class="panel-sub">Average |Z-score| per sensor category. Higher = more anomalous.</div></div>',
+            unsafe_allow_html=True,
+        )
+        cat_z = anom_report.groupby("category")["worst_z"].apply(lambda s: s.abs().mean()).reset_index()
+        cat_z.columns = ["category", "mean_abs_z"]
+        categories = cat_z["category"].tolist()
+        values     = cat_z["mean_abs_z"].tolist()
+
+        radar2 = go.Figure()
+        radar2.add_trace(go.Scatterpolar(
+            r=[1.5] * len(categories) + [1.5],
+            theta=categories + [categories[0]],
+            name="Warning Threshold",
+            line=dict(color="#d97706", dash="dash", width=1.5),
+            fill=None,
+        ))
+        radar2.add_trace(go.Scatterpolar(
+            r=values + [values[0]],
+            theta=categories + [categories[0]],
+            name="Anomaly Score",
+            line=dict(color="#2563eb", width=2.5),
+            fill="toself",
+            fillcolor="rgba(37,99,235,0.15)",
+        ))
+        _dm_r = st.session_state.get("dark_mode", False)
+        _r_txt = "#e2e8f0" if _dm_r else TEXT_DARK
+        _r_bg  = "#1e293b" if _dm_r else "white"
+        radar2.update_layout(
+            height=340, margin=dict(l=20, r=20, t=20, b=20),
+            paper_bgcolor=_r_bg, font=dict(color=_r_txt),
+            polar=dict(
+                bgcolor=_r_bg,
+                radialaxis=dict(visible=True, range=[0, max(3.0, max(values) * 1.1)],
+                                color=_r_txt, gridcolor="#334155" if _dm_r else "#e5e9f2"),
+                angularaxis=dict(color=_r_txt),
+            ),
+            showlegend=True,
+            legend=dict(font=dict(color=_r_txt), orientation="h", y=-0.15),
+        )
+        st.plotly_chart(radar2, use_container_width=True, key="anom_radar_chart")
+
+    # -----------------------------------------------------------------------
+    # SECTION 5 — DETAILED ANOMALY TABLE
+    # -----------------------------------------------------------------------
+    st.markdown(
+        '<div class="panel-card"><div class="panel-title">📋 Full Anomaly Analysis Table</div>'
+        '<div class="panel-sub">All 21 sensors — sorted by anomaly severity. '
+        'Rolling Z uses a 20-cycle sliding window; Global Z uses the entire engine history.</div></div>',
+        unsafe_allow_html=True,
+    )
+
+    table_df = anom_report.copy()
+    table_df["Status"] = table_df.apply(lambda r: f"{r['icon']} {r['status']}", axis=1)
+    table_df["Global Z"] = table_df["global_z"].apply(lambda x: f"{x:+.2f}")
+    table_df["Rolling Z"] = table_df["rolling_z"].apply(lambda x: f"{x:+.2f}")
+    table_df["Deviation"] = table_df["deviation_pct"].apply(lambda x: f"{x:+.1f}%")
+    table_df["Trend"]     = table_df["trend"]
+
+    show_tbl = table_df.sort_values("worst_z", key=lambda s: s.abs(), ascending=False)[[
+        "label", "category", "current", "mean", "std",
+        "Global Z", "Rolling Z", "Deviation", "Trend", "Status"
+    ]].rename(columns={
+        "label": "Sensor", "category": "Category",
+        "current": "Current", "mean": "Baseline Mean", "std": "Std Dev",
+    })
+
+    st.dataframe(show_tbl, use_container_width=True, height=380, hide_index=True)
+
+    # -----------------------------------------------------------------------
+    # SECTION 6 — SENSOR DEEP DIVE
+    # -----------------------------------------------------------------------
+    st.markdown("---")
+    st.markdown("### 🔍 Sensor Deep Dive")
+    st.markdown("Select any sensor to inspect its full history, rolling z-score, and anomaly timeline.")
+
+    sensor_opts = [c for c in engine_df.columns if c.startswith("sensor_")]
+    # Default to the most anomalous sensor
+    default_idx = int(anom_report["worst_z"].abs().idxmax())
+    default_sensor = anom_report.loc[default_idx, "sensor"]
+    dd_sensor = st.selectbox(
+        "Choose a sensor",
+        sensor_opts,
+        index=sensor_opts.index(default_sensor) if default_sensor in sensor_opts else 0,
+        format_func=lambda c: f"{c} — {SENSOR_LABELS.get(c, c)}",
+        key="anom_dd_sensor",
+    )
+
+    dd_row    = anom_report[anom_report["sensor"] == dd_sensor].iloc[0]
+    dd_series = engine_df[dd_sensor]
+    dd_rz     = rolling_anomaly(dd_series, window=20)
+
+    dd_col1, dd_col2, dd_col3, dd_col4 = st.columns(4)
+    for col_, lbl_, val_, sfx_ in [
+        (dd_col1, "Current Value",    dd_row["current"],      ""),
+        (dd_col2, "Baseline Mean",    dd_row["mean"],         ""),
+        (dd_col3, "Global Z-Score",   dd_row["global_z"],     ""),
+        (dd_col4, "Rolling Z-Score",  dd_row["rolling_z"],    ""),
+    ]:
+        with col_:
+            st.markdown(
+                f"""<div class="kpi-card">
+                <div class="kpi-label">{lbl_}</div>
+                <div class="kpi-value" style="font-size:22px;">{val_:+,.3g}{sfx_}</div>
+                <div class="kpi-sub">{dd_row['trend']} &nbsp;·&nbsp;
+                    <b style="color:{dd_row['color']};">{dd_row['icon']} {dd_row['status']}</b>
+                </div>
+                </div>""", unsafe_allow_html=True)
+
+    # Two sub-charts side by side
+    dd_c1, dd_c2 = st.columns(2)
+
+    with dd_c1:
+        st.markdown(
+            f'<div class="panel-card"><div class="panel-title">📈 {SENSOR_LABELS.get(dd_sensor, dd_sensor)} — Raw Reading</div></div>',
+            unsafe_allow_html=True)
+        raw_fig = go.Figure()
+        raw_fig.add_trace(go.Scatter(
+            x=engine_df["cycle"], y=dd_series, mode="lines",
+            line=dict(color="#2563eb", width=2), fill="tozeroy",
+            fillcolor="rgba(37,99,235,0.07)",
+            name="Sensor Reading",
+        ))
+        # Shade the last 20 cycles used for rolling window
+        raw_fig.add_vrect(
+            x0=engine_df["cycle"].iloc[-20] if len(engine_df) >= 20 else engine_df["cycle"].iloc[0],
+            x1=engine_df["cycle"].iloc[-1],
+            fillcolor="rgba(220,38,38,0.07)", line_width=0,
+            annotation_text="Analysis window", annotation_position="top left",
+            annotation_font_size=10,
+        )
+        # Mark latest point
+        raw_fig.add_trace(go.Scatter(
+            x=[engine_df["cycle"].iloc[-1]], y=[dd_series.iloc[-1]],
+            mode="markers", marker=dict(color=dd_row["color"], size=10),
+            name="Latest reading",
+        ))
+        raw_fig.update_layout(**styled_layout(
+            height=300, margin=dict(l=10, r=10, t=10, b=10),
+            xaxis_title="Engine Cycle",
+            yaxis_title=SENSOR_LABELS.get(dd_sensor, dd_sensor),
+        ))
+        st.plotly_chart(raw_fig, use_container_width=True, key="anom_raw_chart")
+
+    with dd_c2:
+        st.markdown(
+            '<div class="panel-card"><div class="panel-title">📉 Rolling Z-Score Timeline</div>'
+            '<div class="panel-sub">Shaded zones: yellow = Warning (±1.5), red = Critical (±2.5).</div></div>',
+            unsafe_allow_html=True)
+        rz_fig = go.Figure()
+        # Shaded bands
+        rz_fig.add_hrect(y0=-1.5, y1=1.5,  fillcolor="rgba(22,163,74,0.08)",  line_width=0)
+        rz_fig.add_hrect(y0=1.5,  y1=2.5,  fillcolor="rgba(217,119,6,0.12)",  line_width=0)
+        rz_fig.add_hrect(y0=-2.5, y1=-1.5, fillcolor="rgba(217,119,6,0.12)",  line_width=0)
+        rz_fig.add_hrect(y0=2.5,  y1=4.0,  fillcolor="rgba(220,38,38,0.12)",  line_width=0)
+        rz_fig.add_hrect(y0=-4.0, y1=-2.5, fillcolor="rgba(220,38,38,0.12)",  line_width=0)
+
+        rz_fig.add_trace(go.Scatter(
+            x=engine_df["cycle"], y=dd_rz, mode="lines",
+            line=dict(color=dd_row["color"], width=2),
+            name="Rolling Z-Score",
+            hovertemplate="Cycle: %{x}<br>Z-Score: %{y:.2f}<extra></extra>",
+        ))
+        rz_fig.add_hline(y=0, line_color="#94a3b8", line_width=1)
+        rz_fig.add_hline(y=1.5,  line_dash="dash", line_color="#d97706", line_width=1)
+        rz_fig.add_hline(y=-1.5, line_dash="dash", line_color="#d97706", line_width=1)
+        rz_fig.add_hline(y=2.5,  line_dash="dot",  line_color="#dc2626", line_width=1)
+        rz_fig.add_hline(y=-2.5, line_dash="dot",  line_color="#dc2626", line_width=1)
+        rz_fig.update_layout(**styled_layout(
+            height=300, margin=dict(l=10, r=10, t=10, b=10),
+            xaxis_title="Engine Cycle",
+            yaxis_title="Z-Score",
+            yaxis=dict(range=[-4.2, 4.2]),
+        ))
+        st.plotly_chart(rz_fig, use_container_width=True, key="anom_rz_chart")
+
+    # -----------------------------------------------------------------------
+    # SECTION 7 — ANOMALY TIMELINE HEATMAP (all sensors across all cycles)
+    # -----------------------------------------------------------------------
+    st.markdown(
+        '<div class="panel-card"><div class="panel-title">🌡️ Full Anomaly Timeline Heatmap</div>'
+        '<div class="panel-sub">Rolling z-score for every sensor across all cycles. '
+        'Red = anomalously high, Green = anomalously low. Last 50 cycles shown.</div></div>',
+        unsafe_allow_html=True,
+    )
+    all_sensor_cols = [c for c in engine_df.columns if c.startswith("sensor_")]
+    timeline_df = engine_df.tail(50)
+    heat_z_matrix = []
+    heat_y_labels = []
+    for col_ in all_sensor_cols:
+        rz_full = rolling_anomaly(engine_df[col_], window=20)
+        rz_win  = rz_full.iloc[-50:]
+        heat_z_matrix.append(rz_win.values)
+        heat_y_labels.append(SENSOR_LABELS.get(col_, col_))
+    heat_z_matrix = np.array(heat_z_matrix)
+
+    _dm_h2 = st.session_state.get("dark_mode", False)
+    _h2_txt = "#e2e8f0" if _dm_h2 else TEXT_DARK
+    _h2_bg  = "#1e293b" if _dm_h2 else "white"
+
+    tl_fig = go.Figure(go.Heatmap(
+        z=heat_z_matrix,
+        x=timeline_df["cycle"].tolist(),
+        y=heat_y_labels,
+        colorscale=[
+            [0.0,  "#16a34a"],
+            [0.3,  "#86efac"],
+            [0.5,  "#fef9c3"],
+            [0.7,  "#fbbf24"],
+            [1.0,  "#dc2626"],
+        ],
+        zmid=0, zmin=-4, zmax=4,
+        colorbar=dict(
+            title=dict(text="Z-score", font=dict(color=_h2_txt)),
+            tickfont=dict(color=_h2_txt),
+        ),
+        hovertemplate="Sensor: %{y}<br>Cycle: %{x}<br>Rolling Z: %{z:.2f}<extra></extra>",
+    ))
+    tl_fig.update_layout(
+        height=400,
+        margin=dict(l=10, r=10, t=10, b=10),
+        paper_bgcolor=_h2_bg, plot_bgcolor=_h2_bg,
+        font=dict(color=_h2_txt),
+        xaxis=dict(title="Engine Cycle", color=_h2_txt,
+                   gridcolor="#334155" if _dm_h2 else "#e5e9f2"),
+        yaxis=dict(title="Sensor", color=_h2_txt, autorange="reversed",
+                   gridcolor="#334155" if _dm_h2 else "#e5e9f2"),
+    )
+    st.plotly_chart(tl_fig, use_container_width=True, key="anom_timeline_heatmap")
+
+    # -----------------------------------------------------------------------
+    # SECTION 8 — MAINTENANCE RECOMMENDATION
+    # -----------------------------------------------------------------------
+    st.markdown("### 🛠️ Recommended Actions")
+    crit_sensors = anom_report[anom_report["status"] == "Critical"]["label"].tolist()
+    warn_sensors = anom_report[anom_report["status"] == "Warning"]["label"].tolist()
+
+    if verdict_color == "#dc2626":
+        action_bg, action_border, action_text = "#fef2f2", "#dc2626", "#7f1d1d"
+        action_icon  = "🔴 CRITICAL — Immediate Maintenance Required"
+        action_items = [
+            f"<li>Ground Engine #{int(engine_id):02d} immediately if safety margins cannot be confirmed.</li>",
+            f"<li>Critical anomalies detected in: <b>{', '.join(crit_sensors) if crit_sensors else 'multiple sensors'}</b>.</li>",
+            "<li>Schedule a full borescope inspection before the next flight cycle.</li>",
+            "<li>Activate spare-parts logistics and downtime planning NOW.</li>",
+            f"<li>Cross-reference these sensor deviations with known failure signatures for {fd_choice} engines.</li>",
+        ]
+    elif verdict_color == "#d97706":
+        action_bg, action_border, action_text = "#fffbeb", "#d97706", "#78350f"
+        action_icon  = "🟡 WARNING — Schedule Maintenance Soon"
+        action_items = [
+            f"<li>Elevated anomalies in: <b>{', '.join((crit_sensors + warn_sensors)[:5]) if (crit_sensors + warn_sensors) else 'several sensors'}</b>.</li>",
+            f"<li>Slot Engine #{int(engine_id):02d} into the next planned maintenance window.</li>",
+            "<li>Increase sensor monitoring frequency — check readings every 5 cycles.</li>",
+            "<li>No immediate grounding needed — continue standard operations with caution.</li>",
+            "<li>Re-run anomaly detection after the next 10 operating cycles.</li>",
+        ]
+    else:
+        action_bg, action_border, action_text = "#f0fdf4", "#16a34a", "#14532d"
+        action_icon  = "🟢 NORMAL — No Immediate Action Required"
+        action_items = [
+            "<li>All sensor readings are within expected operating bounds.</li>",
+            f"<li>Continue standard monitoring cadence for Engine #{int(engine_id):02d}.</li>",
+            "<li>Re-run anomaly detection after the next scheduled cycle batch.</li>",
+            "<li>No maintenance action required at this time.</li>",
+        ]
+
+    st.markdown(
+        f"""<div style="background:{action_bg};border:2px solid {action_border};
+            border-radius:14px;padding:22px 26px;margin-bottom:20px;">
+            <div style="font-size:20px;font-weight:900;color:{action_border};">{action_icon}</div>
+            <ul style="margin-top:12px;font-size:13.5px;color:{action_text};">
+                {''.join(action_items)}
+            </ul>
+        </div>""",
+        unsafe_allow_html=True,
+    )
 
 st.caption(
     f"AeroGuard · Safer Skies, Smarter Engines · Dataset: {fd_choice} · "
