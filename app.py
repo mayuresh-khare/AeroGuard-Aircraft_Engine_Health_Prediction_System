@@ -649,17 +649,17 @@ with st.sidebar:
             color: {_lbl_col};
         }}
 
-        /* ── Invisible overlay button: full pointer cursor, no text cursor ── */
+        /* ── Invisible overlay button: sits exactly over the pill ── */
         section[data-testid="stSidebar"]
             div[data-testid="stButton"]:has(button[data-testid="theme_toggle_btn"]) {{
-            margin-top: -54px;
+            margin-top: -60px;
             position: relative;
             z-index: 5;
         }}
         section[data-testid="stSidebar"]
             button[data-testid="theme_toggle_btn"] {{
             opacity: 0 !important;
-            height: 50px !important;
+            height: 56px !important;
             cursor: pointer !important;
             user-select: none !important;
             -webkit-user-select: none !important;
@@ -673,7 +673,7 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
     # Real (transparent) Streamlit button that handles the click
-    if st.button("Toggle Theme", use_container_width=True, key="theme_toggle_btn"):
+    if st.button(" ", use_container_width=True, key="theme_toggle_btn"):
         st.session_state.dark_mode = not st.session_state.dark_mode
         st.rerun()
 
