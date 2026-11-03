@@ -618,7 +618,8 @@ st.markdown(
     div[data-testid="stButton"]:has(button[data-testid="theme_fab"]) {{
         position:  fixed !important;
         top:       12px  !important;
-        right:     70px  !important;
+        right:     16px  !important;
+        left:      auto  !important;
         z-index:   99999 !important;
         width:     auto  !important;
     }}
