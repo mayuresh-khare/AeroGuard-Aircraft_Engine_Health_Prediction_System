@@ -645,8 +645,7 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
     # Invisible full-width Streamlit button that handles the actual click
-    if st.button("Toggle Theme", use_container_width=True, key="theme_toggle_btn",
-                 help="Switch between Dark and Light mode"):
+    if st.button("Toggle Theme", use_container_width=True, key="theme_toggle_btn"):
         st.session_state.dark_mode = not st.session_state.dark_mode
         st.rerun()
     # Push the real button visually behind / below the custom pill
