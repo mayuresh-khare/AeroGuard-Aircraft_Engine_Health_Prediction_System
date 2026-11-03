@@ -599,81 +599,60 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # ---- Theme Toggle — custom pill + scoped cursor fix ----
+    # ---- Theme Toggle — styled real button ----
     _is_dark  = st.session_state.get("dark_mode", False)
     _tog_bg   = "#1e3a5f" if _is_dark else "#c7d8f0"
     _knob_pos = "calc(100% - 28px)" if _is_dark else "3px"
     _tog_icon = "🌙" if _is_dark else "☀️"
     _tog_lbl  = "Dark Mode" if _is_dark else "Light Mode"
-    _lbl_col  = "#e2e8f0" if _is_dark else "#c9dff7"
 
-    # Visual pill (purely decorative — no pointer events on it)
+    # Inject CSS that turns THIS button into the pill — keyed by data-testid
     st.markdown(
-        f"""
-        <style>
-        /* ── Theme-toggle pill: no text cursor, no accidental pointer zone ── */
-        .theme-pill {{
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            background: #16233f;
-            border-radius: 12px;
-            padding: 10px 14px;
-            border: 1px solid #2a3f6a;
-            pointer-events: none;        /* let clicks fall through to the real button */
-            user-select: none;           /* prevent text-selection cursor */
-            -webkit-user-select: none;
-            margin-bottom: 2px;
+        f"""<style>
+        section[data-testid="stSidebar"]
+            button[data-testid="theme_toggle_btn"] {{
+            background:    #16233f !important;
+            border:        1px solid #2a3f6a !important;
+            border-radius: 12px !important;
+            padding:       10px 14px !important;
+            height:        auto !important;
+            cursor:        pointer !important;
+            user-select:   none !important;
+            width:         100% !important;
+            text-align:    left !important;
+            color:         transparent !important;   /* hide default label */
+            font-size:     0 !important;
+            position:      relative !important;
         }}
-        .theme-pill .track {{
-            position: relative;
+        section[data-testid="stSidebar"]
+            button[data-testid="theme_toggle_btn"]::before {{
+            content: "";
+            display: inline-block;
             width: 50px; height: 26px;
-            flex-shrink: 0;
             background: {_tog_bg};
             border-radius: 13px;
             border: 1.5px solid #3b5ea6;
-        }}
-        .theme-pill .knob {{
-            position: absolute;
-            top: 3px; left: {_knob_pos};
-            width: 22px; height: 20px;
-            background: #f8fafc;
-            border-radius: 10px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 12px;
-            box-shadow: 0 1px 4px rgba(0,0,0,.3);
-        }}
-        .theme-pill .tog-label {{
-            font-size: 13px;
-            font-weight: 700;
-            color: {_lbl_col};
-        }}
-
-        /* ── Invisible overlay button: sits exactly over the pill ── */
-        section[data-testid="stSidebar"]
-            div[data-testid="stButton"]:has(button[data-testid="theme_toggle_btn"]) {{
-            margin-top: -60px;
+            vertical-align: middle;
             position: relative;
-            z-index: 5;
         }}
         section[data-testid="stSidebar"]
-            button[data-testid="theme_toggle_btn"] {{
-            opacity: 0 !important;
-            height: 56px !important;
-            cursor: pointer !important;
-            user-select: none !important;
-            -webkit-user-select: none !important;
+            button[data-testid="theme_toggle_btn"]::after {{
+            content: "{_tog_icon}  {_tog_lbl}";
+            font-size: 13px !important;
+            font-weight: 700 !important;
+            color: #e2e8f0 !important;
+            margin-left: 10px;
+            vertical-align: middle;
         }}
-        </style>
-        <div class="theme-pill">
-            <div class="track"><div class="knob">{_tog_icon}</div></div>
-            <span class="tog-label">{_tog_lbl}</span>
-        </div>
-        """,
+        section[data-testid="stSidebar"]
+            button[data-testid="theme_toggle_btn"]:hover {{
+            background: #1e2f50 !important;
+            border-color: #3b5ea6 !important;
+        }}
+        </style>""",
         unsafe_allow_html=True,
     )
-    # Real (transparent) Streamlit button that handles the click
-    if st.button(" ", use_container_width=True, key="theme_toggle_btn"):
+    if st.button(".", use_container_width=True, key="theme_toggle_btn"):
         st.session_state.dark_mode = not st.session_state.dark_mode
         st.rerun()
 
