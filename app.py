@@ -660,6 +660,195 @@ def get_fleet_risk_summary(_df: pd.DataFrame, fd_key: str) -> pd.DataFrame:
 
 
 # --------------------------------------------------------------------------
+# ENGINE HEALTH SCORE HELPERS (TASK 4)
+# --------------------------------------------------------------------------
+def compute_engine_health_score(eng_df: pd.DataFrame, rul_prediction: float):
+    """
+    Computes a comprehensive physical & prognostic Engine Health Score (0–100) combining:
+      1. RUL Prognostic Factor (40% weight): Remaining useful life
+      2. Sensor Stability Factor (35% weight): Multi-sensor z-score deviations & critical penalties
+      3. Operating Cycle Consumption (25% weight): Cumulative fatigue life
+
+    4-Tier Classification:
+      - Healthy (80 – 100): Optimal condition
+      - Monitor (60 – 79): Mild drift, observational monitoring
+      - Warning (40 – 59): Noticeable degradation, plan maintenance
+      - Critical (0 – 39): Severe wear / urgent attention required
+    """
+    latest_row = eng_df.iloc[-1]
+    cycle_now = int(latest_row["cycle"]) if "cycle" in latest_row else len(eng_df)
+
+    # 1. RUL Score (0 to 100, 40% weight)
+    rul_score = min(max(rul_prediction / 125.0 * 100.0, 0.0), 100.0)
+
+    # 2. Sensor Stability Score (0 to 100, 35% weight)
+    sensor_cols = [c for c in eng_df.columns if c.startswith("sensor_")]
+    anom_rows = []
+    z_scores = []
+    crit_count = 0
+    warn_count = 0
+
+    for c in sensor_cols:
+        s = eng_df[c]
+        mu = s.mean()
+        sig = s.std()
+        curr = float(latest_row[c])
+        z = (curr - mu) / max(sig, 1e-9)
+        abs_z = abs(z)
+        z_scores.append(abs_z)
+
+        if abs_z > 2.5:
+            st_sensor = "Critical"
+            crit_count += 1
+        elif abs_z > 1.5:
+            st_sensor = "Warning"
+            warn_count += 1
+        else:
+            st_sensor = "Normal"
+
+        anom_rows.append({
+            "sensor": c,
+            "label": SENSOR_LABELS.get(c, c),
+            "current": curr,
+            "mean": mu,
+            "std": sig,
+            "z": z,
+            "abs_z": abs_z,
+            "status": st_sensor
+        })
+
+    mean_abs_z = float(np.mean(z_scores)) if z_scores else 0.0
+    raw_sensor_score = max(0.0, 100.0 - (mean_abs_z / 3.0) * 100.0)
+    sensor_score = min(max(raw_sensor_score - (crit_count * 4.0 + warn_count * 1.5), 0.0), 100.0)
+
+    # 3. Operating Cycle Fatigue Score (0 to 100, 25% weight)
+    total_life_est = cycle_now + max(rul_prediction, 1.0)
+    cycle_score = min(max((rul_prediction / total_life_est) * 100.0, 0.0), 100.0)
+
+    # Composite Health Score
+    total_score = round(0.40 * rul_score + 0.35 * sensor_score + 0.25 * cycle_score, 1)
+
+    # 4-Tier Classification Standard
+    if total_score >= 80.0:
+        tier = "Healthy"
+        color = "#16a34a"
+        bg_color = "#f0fdf4"
+        icon = "🟢"
+        desc = "Engine is operating in optimal health. All sensors and operating metrics indicate strong mechanical integrity within normal envelopes."
+    elif total_score >= 60.0:
+        tier = "Monitor"
+        color = "#2563eb"
+        bg_color = "#eff6ff"
+        icon = "🔵"
+        desc = "Engine exhibits early operational drift or mild sensor fluctuations. Continue flight operations with increased telemetry logging."
+    elif total_score >= 40.0:
+        tier = "Warning"
+        color = "#d97706"
+        bg_color = "#fffbeb"
+        icon = "🟡"
+        desc = "Noticeable sensor degradation and reduced remaining life. Recommend scheduling shop inspection within the next 15–20 operating cycles."
+    else:
+        tier = "Critical"
+        color = "#dc2626"
+        bg_color = "#fef2f2"
+        icon = "🔴"
+        desc = "Urgent attention required! Severe sensor anomalies or imminent end-of-life condition detected. Recommend immediate borescope inspection or grounding."
+
+    def _subsystem_score(cols):
+        zs = [r["abs_z"] for r in anom_rows if r["sensor"] in cols]
+        if not zs:
+            return 88.0
+        return round(min(max(100.0 - float(np.mean(zs)) * 26.0, 0.0), 100.0), 1)
+
+    subsystems = {
+        "Compressor Subsystem": _subsystem_score(["sensor_2", "sensor_3", "sensor_7", "sensor_11"]),
+        "Turbine & Hot Section": _subsystem_score(["sensor_4", "sensor_20", "sensor_21"]),
+        "Rotor & Spool Dynamics": _subsystem_score(["sensor_8", "sensor_9", "sensor_13", "sensor_14"]),
+        "Fuel & Combustion": _subsystem_score(["sensor_12", "sensor_16"]),
+        "Bypass & Aerodynamics": _subsystem_score(["sensor_1", "sensor_5", "sensor_6", "sensor_15"]),
+    }
+
+    return {
+        "total_score": total_score,
+        "tier": tier,
+        "color": color,
+        "bg_color": bg_color,
+        "icon": icon,
+        "rul_score": round(rul_score, 1),
+        "sensor_score": round(sensor_score, 1),
+        "cycle_score": round(cycle_score, 1),
+        "rul_contrib": round(0.40 * rul_score, 1),
+        "sensor_contrib": round(0.35 * sensor_score, 1),
+        "cycle_contrib": round(0.25 * cycle_score, 1),
+        "crit_count": crit_count,
+        "warn_count": warn_count,
+        "description": desc,
+        "anomaly_df": pd.DataFrame(anom_rows),
+        "subsystems": subsystems,
+    }
+
+
+def compute_health_trajectory(eng_df: pd.DataFrame, rul_series: np.ndarray) -> np.ndarray:
+    """Computes the cycle-by-cycle Engine Health Score trajectory across all operating cycles."""
+    scores = []
+    sensor_cols = [c for c in eng_df.columns if c.startswith("sensor_")]
+    n = len(eng_df)
+    for i in range(n):
+        cyc = int(eng_df["cycle"].iloc[i]) if "cycle" in eng_df.columns else i + 1
+        rul_val = float(rul_series[i])
+        rul_s = min(max(rul_val / 125.0 * 100.0, 0.0), 100.0)
+
+        sub_df = eng_df.iloc[: i + 1]
+        z_vals = []
+        for c in sensor_cols:
+            s_all = eng_df[c]
+            curr_v = float(sub_df[c].iloc[-1])
+            z_vals.append(abs((curr_v - s_all.mean()) / max(s_all.std(), 1e-9)))
+        m_z = float(np.mean(z_vals)) if z_vals else 0.0
+        sens_s = max(0.0, 100.0 - (m_z / 3.0) * 100.0)
+
+        cyc_s = min(max((rul_val / (cyc + max(rul_val, 1.0))) * 100.0, 0.0), 100.0)
+        tot_s = round(0.40 * rul_s + 0.35 * sens_s + 0.25 * cyc_s, 1)
+        scores.append(tot_s)
+    return np.array(scores)
+
+
+@st.cache_data(show_spinner=False)
+def get_fleet_health_summary(_df: pd.DataFrame, fd_key: str) -> pd.DataFrame:
+    """Compute overall health score and classification tier for all engines in the dataset."""
+    rows = []
+    imp_m, imp_sc, imp_f = load_improved_model_and_scaler()
+    base_m, base_sc = load_model_and_scaler()
+
+    for uid in sorted(_df["unit"].unique()):
+        eng = _df[_df["unit"] == uid].reset_index(drop=True)
+        if eng.empty:
+            continue
+        p_imp, used_imp = predict_improved_rul_batch(imp_m, imp_sc, imp_f, eng)
+        if used_imp:
+            r_val = float(p_imp[-1])
+        else:
+            p_base, _ = predict_baseline_rul_batch(base_m, base_sc, eng)
+            r_val = float(p_base[-1])
+
+        h_info = compute_engine_health_score(eng, r_val)
+        c_now = int(eng["cycle"].iloc[-1]) if "cycle" in eng.columns else len(eng)
+        rows.append({
+            "unit": uid,
+            "engine": f"Engine #{int(uid):02d}",
+            "health_score": h_info["total_score"],
+            "tier": h_info["tier"],
+            "color": h_info["color"],
+            "icon": h_info["icon"],
+            "cycle": c_now,
+            "rul": round(r_val, 1),
+            "sensor_score": h_info["sensor_score"],
+            "rul_score": h_info["rul_score"],
+        })
+    return pd.DataFrame(rows)
+
+
+# --------------------------------------------------------------------------
 # SIDEBAR
 # --------------------------------------------------------------------------
 with st.sidebar:
@@ -674,7 +863,7 @@ with st.sidebar:
 
     page = st.radio(
         "Navigation",
-        ["🏠 Dashboard", "📈 Engine Monitoring", "🗄️ Sensor Data", "🔧 Maintenance", "⚠️ Risk Detection", "🔍 Anomaly Detection", "🎯 RUL Improvement"],
+        ["🏠 Dashboard", "📈 Engine Monitoring", "🗄️ Sensor Data", "🔧 Maintenance", "⚠️ Risk Detection", "🔍 Anomaly Detection", "🎯 RUL Improvement", "🩺 Engine Health Score"],
         label_visibility="collapsed",
         key="nav_page",
     )
@@ -814,6 +1003,7 @@ page_titles = {
     "⚠️ Risk Detection": ("Engine Failure Risk Detection", "ML-powered failure risk classification · Normal · Warning · Critical"),
     "🔍 Anomaly Detection": ("Sensor Anomaly Detection", "Identify abnormal sensor readings · ML-based z-score & trend analysis"),
     "🎯 RUL Improvement": ("RUL Prediction Improvement", "Feature-engineered machine learning model · 45.7% lower error · Model comparison"),
+    "🩺 Engine Health Score": ("Engine Health Score System", "Multi-factor prognostic health index · Healthy · Monitor · Warning · Critical"),
 }
 title_text, sub_text = page_titles[page]
 st.markdown(
@@ -2424,6 +2614,381 @@ elif page == "🎯 RUL Improvement":
 
     fleet_sum_df = pd.DataFrame(fleet_summary_rows)
     st.dataframe(fleet_sum_df, use_container_width=True, hide_index=True, height=280)
+
+
+# ==========================================================================
+# PAGE 8 — ENGINE HEALTH SCORE (TASK 4)
+# ==========================================================================
+elif page == "🩺 Engine Health Score":
+
+    # 1. Compute Health Score for current engine
+    health_info = compute_engine_health_score(engine_df, rul_pred)
+    total_score = health_info["total_score"]
+    tier = health_info["tier"]
+    tier_color = health_info["color"]
+    tier_bg = health_info["bg_color"]
+    tier_icon = health_info["icon"]
+    desc = health_info["description"]
+
+    # Theme-adaptive variables
+    _dm = st.session_state.get("dark_mode", False)
+    banner_bg = "#1e293b" if _dm else tier_bg
+    banner_border = tier_color
+    banner_txt = "#f8fafc" if _dm else "#0f172a"
+    sub_box_bg = "#334155" if _dm else "#ffffff"
+    sub_box_txt = "#cbd5e1" if _dm else "#475569"
+
+    # Master Health Score Banner (Zero indentation to avoid markdown code-block bug)
+    st.markdown(
+f"""<div style="background:{banner_bg};border:2px solid {banner_border};border-radius:16px;padding:22px 26px;margin-bottom:20px;box-shadow:0 4px 18px rgba(0,0,0,0.08);">
+<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;">
+<div>
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
+<span style="font-size:32px;">{tier_icon}</span>
+<span style="font-size:26px;font-weight:900;color:{tier_color};letter-spacing:-0.5px;">{tier.upper()} CONDITION</span>
+<span style="background:{tier_color};color:#ffffff;font-size:12px;font-weight:800;padding:4px 14px;border-radius:20px;letter-spacing:0.5px;">TIER: {tier}</span>
+</div>
+<div style="font-size:14px;color:{banner_txt};max-width:680px;line-height:1.5;">{desc}</div>
+</div>
+<div style="text-align:right;background:{sub_box_bg};padding:14px 22px;border-radius:14px;border:1px solid {tier_color}44;min-width:170px;">
+<div style="font-size:11px;font-weight:700;color:{sub_box_txt};text-transform:uppercase;letter-spacing:0.5px;">Overall Health Score</div>
+<div style="font-size:40px;font-weight:900;color:{tier_color};line-height:1.1;">{total_score}<span style="font-size:18px;color:{sub_box_txt};font-weight:600;"> / 100</span></div>
+<div style="font-size:12px;color:{tier_color};font-weight:700;">Engine #{int(engine_id):02d} · Cycle {cycle_now}</div>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;margin-top:18px;border-top:1px solid {tier_color}33;padding-top:14px;">
+<div style="background:{sub_box_bg};padding:12px 14px;border-radius:10px;border-left:4px solid #2563eb;">
+<div style="font-size:11px;color:{sub_box_txt};font-weight:700;">PROGNOSTIC RUL (40% WEIGHT)</div>
+<div style="font-size:18px;font-weight:800;color:#2563eb;">{health_info['rul_score']:.1f}<span style="font-size:12px;font-weight:500;">/100</span> <span style="font-size:12px;color:{sub_box_txt};">({health_info['rul_contrib']:.1f} pts)</span></div>
+<div style="font-size:11px;color:{sub_box_txt};">Est. {rul_pred:.0f} operating cycles left</div>
+</div>
+<div style="background:{sub_box_bg};padding:12px 14px;border-radius:10px;border-left:4px solid #7c3aed;">
+<div style="font-size:11px;color:{sub_box_txt};font-weight:700;">SENSOR STABILITY (35% WEIGHT)</div>
+<div style="font-size:18px;font-weight:800;color:#7c3aed;">{health_info['sensor_score']:.1f}<span style="font-size:12px;font-weight:500;">/100</span> <span style="font-size:12px;color:{sub_box_txt};">({health_info['sensor_contrib']:.1f} pts)</span></div>
+<div style="font-size:11px;color:{sub_box_txt};">{health_info['crit_count']} Critical · {health_info['warn_count']} Warning alerts</div>
+</div>
+<div style="background:{sub_box_bg};padding:12px 14px;border-radius:10px;border-left:4px solid #059669;">
+<div style="font-size:11px;color:{sub_box_txt};font-weight:700;">CYCLE FATIGUE LIFE (25% WEIGHT)</div>
+<div style="font-size:18px;font-weight:800;color:#059669;">{health_info['cycle_score']:.1f}<span style="font-size:12px;font-weight:500;">/100</span> <span style="font-size:12px;color:{sub_box_txt};">({health_info['cycle_contrib']:.1f} pts)</span></div>
+<div style="font-size:11px;color:{sub_box_txt};">Cycle {cycle_now} of ~{cycle_now + max(int(rul_pred), 1)} total lifespan</div>
+</div>
+</div>
+</div>""",
+        unsafe_allow_html=True,
+    )
+
+    # 2. KPI Metrics Grid
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.markdown(
+            f"""<div class="kpi-card">
+            <div class="kpi-label">🩺 Health Index</div>
+            <div class="kpi-value" style="color:{tier_color};">{total_score} <span style="font-size:16px;">/ 100</span></div>
+            <div class="kpi-sub">Overall mechanical condition</div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+    with c2:
+        st.markdown(
+            f"""<div class="kpi-card">
+            <div class="kpi-label">🏷️ Health Tier</div>
+            <div class="kpi-value" style="color:{tier_color};">{tier_icon} {tier}</div>
+            <div class="kpi-sub">Operating status classification</div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+    with c3:
+        st.markdown(
+            f"""<div class="kpi-card">
+            <div class="kpi-label">⏱️ Forecasted RUL</div>
+            <div class="kpi-value" style="color:#2563eb;">{rul_pred:,.0f} cyc</div>
+            <div class="kpi-sub">Feature-engineered prediction</div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+    with c4:
+        st.markdown(
+            f"""<div class="kpi-card">
+            <div class="kpi-label">⚠️ Active Sensor Alerts</div>
+            <div class="kpi-value" style="color:{'#dc2626' if health_info['crit_count'] > 0 else ('#d97706' if health_info['warn_count'] > 0 else '#16a34a')};">
+                {health_info['crit_count']} Crit · {health_info['warn_count']} Warn
+            </div>
+            <div class="kpi-sub">Out of {len(health_info['anomaly_df'])} tracked telemetry channels</div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+
+    # 3. Health Score Trajectory Degradation Curve
+    st.markdown(
+        """<div class="panel-card">
+        <div class="panel-title">📉 Engine Health Score Degradation Trajectory</div>
+        <div class="panel-sub">Continuous cycle-by-cycle evolution of engine health with shaded 4-tier operational thresholds.</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    rul_series_for_traj = rul_imp_arr if imp_used else rul_base_arr
+    traj_scores = compute_health_trajectory(engine_df, rul_series_for_traj)
+    cycles_arr = engine_df["cycle"].values.astype(int) if "cycle" in engine_df.columns else np.arange(1, len(engine_df) + 1)
+
+    fig_traj = go.Figure()
+
+    # Shaded threshold bands
+    max_c = float(cycles_arr[-1])
+    fig_traj.add_hrect(y0=80, y1=100, fillcolor="#16a34a", opacity=0.10, line_width=0, annotation_text="Healthy (80–100)", annotation_position="top right")
+    fig_traj.add_hrect(y0=60, y1=80, fillcolor="#2563eb", opacity=0.10, line_width=0, annotation_text="Monitor (60–79)", annotation_position="top right")
+    fig_traj.add_hrect(y0=40, y1=60, fillcolor="#d97706", opacity=0.12, line_width=0, annotation_text="Warning (40–59)", annotation_position="top right")
+    fig_traj.add_hrect(y0=0, y1=40, fillcolor="#dc2626", opacity=0.12, line_width=0, annotation_text="Critical (0–39)", annotation_position="top right")
+
+    # Trajectory curve
+    fig_traj.add_trace(go.Scatter(
+        x=cycles_arr,
+        y=traj_scores,
+        mode="lines",
+        name="Engine Health Score",
+        line=dict(color=tier_color, width=3.5),
+        hovertemplate="Cycle: %{x}<br>Health Score: %{y:.1f} / 100<extra></extra>",
+    ))
+
+    # Mark current cycle point
+    fig_traj.add_trace(go.Scatter(
+        x=[cycles_arr[-1]],
+        y=[traj_scores[-1]],
+        mode="markers+text",
+        name="Current Cycle",
+        marker=dict(size=14, color=tier_color, line=dict(color="#ffffff", width=2.5)),
+        text=[f"  Cycle {cycles_arr[-1]}: {traj_scores[-1]:.1f}"],
+        textposition="top right",
+        hoverinfo="skip",
+    ))
+
+    fig_traj.update_layout(**styled_layout(
+        height=380,
+        margin=dict(l=10, r=20, t=20, b=10),
+        xaxis_title="Operating Cycle",
+        yaxis_title="Health Score (0–100)",
+        yaxis=dict(range=[0, 105]),
+        showlegend=False,
+    ))
+    st.plotly_chart(fig_traj, use_container_width=True, key="health_trajectory_chart")
+
+    # 4. Subsystem Breakdown & Diagnostics Radar
+    st.markdown(
+        """<div class="panel-card">
+        <div class="panel-title">⚙️ Subsystem Health Diagnostics & Polar Assessment</div>
+        <div class="panel-sub">Decomposed mechanical condition across primary turbofan component groups.</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    sub_col1, sub_col2 = st.columns([1.1, 1.0])
+    subsystems_dict = health_info["subsystems"]
+    sub_names = list(subsystems_dict.keys())
+    sub_scores = list(subsystems_dict.values())
+
+    with sub_col1:
+        # Radar Polar Chart
+        fig_radar = go.Figure()
+        fig_radar.add_trace(go.Scatterpolar(
+            r=sub_scores + [sub_scores[0]],
+            theta=sub_names + [sub_names[0]],
+            fill="toself",
+            fillcolor=f"{tier_color}33",
+            line=dict(color=tier_color, width=2.5),
+            marker=dict(size=7, color=tier_color),
+            hovertemplate="Subsystem: %{theta}<br>Health Score: %{r:.1f} / 100<extra></extra>",
+        ))
+        _dm = st.session_state.get("dark_mode", False)
+        _polar_bg = "#1e293b" if _dm else "#ffffff"
+        _polar_line = "#334155" if _dm else "#e2e8f0"
+        _polar_txt = "#cbd5e1" if _dm else "#334155"
+
+        fig_radar.update_layout(
+            polar=dict(
+                bgcolor=_polar_bg,
+                radialaxis=dict(visible=True, range=[0, 100], color=_polar_txt, gridcolor=_polar_line),
+                angularaxis=dict(color=_polar_txt, gridcolor=_polar_line),
+            ),
+            paper_bgcolor=_polar_bg,
+            height=360,
+            margin=dict(l=40, r=40, t=30, b=30),
+            showlegend=False,
+        )
+        st.plotly_chart(fig_radar, use_container_width=True, key="subsystem_radar_chart")
+
+    with sub_col2:
+        st.markdown(f"<div style='padding-top:10px;'>", unsafe_allow_html=True)
+        for s_name, s_val in subsystems_dict.items():
+            if s_val >= 80:
+                s_col = "#16a34a"
+                s_lbl = "Optimal"
+            elif s_val >= 60:
+                s_col = "#2563eb"
+                s_lbl = "Monitoring"
+            elif s_val >= 40:
+                s_col = "#d97706"
+                s_lbl = "Wear Observed"
+            else:
+                s_col = "#dc2626"
+                s_lbl = "High Degradation"
+
+            st.markdown(
+f"""<div style="background:{sub_box_bg};border:1px solid {_polar_line};border-radius:10px;padding:12px 16px;margin-bottom:10px;">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+<span style="font-weight:700;font-size:13.5px;color:{banner_txt};">{s_name}</span>
+<span style="font-weight:800;font-size:13.5px;color:{s_col};">{s_val:.1f} / 100 &nbsp;<span style="font-size:11px;padding:2px 8px;border-radius:12px;background:{s_col}22;">{s_lbl}</span></span>
+</div>
+<div style="width:100%;background:{_polar_line};height:8px;border-radius:4px;overflow:hidden;">
+<div style="width:{min(max(s_val, 0), 100)}%;background:{s_col};height:8px;border-radius:4px;"></div>
+</div>
+</div>""",
+                unsafe_allow_html=True,
+            )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # 5. Sensor Health Audit & Deviations Table
+    st.markdown(
+        """<div class="panel-card">
+        <div class="panel-title">🔬 Detailed Sensor Health & Z-Score Deviation Matrix</div>
+        <div class="panel-sub">Real-time telemetry readings versus historical normal operating baseline for Engine #""" + f"{int(engine_id):02d}." + """</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    anom_df = health_info["anomaly_df"].copy()
+    anom_display = pd.DataFrame({
+        "Sensor Channel": anom_df["sensor"],
+        "Subsystem / Description": anom_df["label"],
+        "Current Value": anom_df["current"].apply(lambda v: f"{v:,.2f}"),
+        "Normal Mean (μ)": anom_df["mean"].apply(lambda v: f"{v:,.2f}"),
+        "Std Dev (σ)": anom_df["std"].apply(lambda v: f"{v:,.3f}"),
+        "Z-Score (Dev)": anom_df["z"].apply(lambda v: f"{v:+.2f}σ"),
+        "Health Status": anom_df["status"].apply(lambda s: f"🔴 {s}" if s == "Critical" else (f"🟡 {s}" if s == "Warning" else f"🟢 {s}")),
+    })
+    st.dataframe(anom_display, use_container_width=True, hide_index=True, height=290)
+
+    # 6. Fleet-Wide Health Distribution & Priority Ranking
+    st.markdown(
+        f"""<div class="panel-card">
+        <div class="panel-title">🌐 Fleet Health Distribution & Priority Ranking ({fd_choice})</div>
+        <div class="panel-sub">Health classification and urgency matrix across all engines in the current fleet dataset.</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    fleet_df = get_fleet_health_summary(df, fd_choice)
+    if not fleet_df.empty:
+        n_healthy = int((fleet_df["tier"] == "Healthy").sum())
+        n_monitor = int((fleet_df["tier"] == "Monitor").sum())
+        n_warning = int((fleet_df["tier"] == "Warning").sum())
+        n_critical = int((fleet_df["tier"] == "Critical").sum())
+        total_fleet = len(fleet_df)
+
+        fc1, fc2, fc3, fc4 = st.columns(4)
+        with fc1:
+            st.markdown(
+                f"""<div class="kpi-card">
+                <div class="kpi-label">🟢 Healthy Engines</div>
+                <div class="kpi-value" style="color:#16a34a;">{n_healthy} <span style="font-size:14px;color:{sub_box_txt};">({n_healthy/total_fleet*100:.0f}%)</span></div>
+                <div class="kpi-sub">Score 80 – 100</div>
+                </div>""", unsafe_allow_html=True)
+        with fc2:
+            st.markdown(
+                f"""<div class="kpi-card">
+                <div class="kpi-label">🔵 Monitor Engines</div>
+                <div class="kpi-value" style="color:#2563eb;">{n_monitor} <span style="font-size:14px;color:{sub_box_txt};">({n_monitor/total_fleet*100:.0f}%)</span></div>
+                <div class="kpi-sub">Score 60 – 79</div>
+                </div>""", unsafe_allow_html=True)
+        with fc3:
+            st.markdown(
+                f"""<div class="kpi-card">
+                <div class="kpi-label">🟡 Warning Engines</div>
+                <div class="kpi-value" style="color:#d97706;">{n_warning} <span style="font-size:14px;color:{sub_box_txt};">({n_warning/total_fleet*100:.0f}%)</span></div>
+                <div class="kpi-sub">Score 40 – 59</div>
+                </div>""", unsafe_allow_html=True)
+        with fc4:
+            st.markdown(
+                f"""<div class="kpi-card">
+                <div class="kpi-label">🔴 Critical Engines</div>
+                <div class="kpi-value" style="color:#dc2626;">{n_critical} <span style="font-size:14px;color:{sub_box_txt};">({n_critical/total_fleet*100:.0f}%)</span></div>
+                <div class="kpi-sub">Score 0 – 39</div>
+                </div>""", unsafe_allow_html=True)
+
+        # Fleet Ranking Table (Sorted by lowest health score first to highlight risk)
+        fleet_sorted = fleet_df.sort_values("health_score", ascending=True).reset_index(drop=True)
+        fleet_table_display = pd.DataFrame({
+            "Engine": fleet_sorted["engine"],
+            "Health Score": fleet_sorted["health_score"].apply(lambda s: f"{s:.1f} / 100"),
+            "Classification Tier": fleet_sorted.apply(lambda r: f"{r['icon']} {r['tier']}", axis=1),
+            "Current Cycle": fleet_sorted["cycle"].apply(lambda c: f"{c} cyc"),
+            "Forecasted RUL": fleet_sorted["rul"].apply(lambda r: f"{r:.0f} cyc"),
+            "Sensor Stability": fleet_sorted["sensor_score"].apply(lambda s: f"{s:.1f} / 100"),
+            "RUL Prognostic": fleet_sorted["rul_score"].apply(lambda r: f"{r:.1f} / 100"),
+        })
+        st.dataframe(fleet_table_display, use_container_width=True, hide_index=True, height=310)
+
+    # 7. Actionable Maintenance & Operational Protocol
+    st.markdown(
+        """<div class="panel-card">
+        <div class="panel-title">📋 Prescriptive Maintenance & Flight Operations Protocol</div>
+        <div class="panel-sub">Standard Operating Procedures (SOP) tailored to current classification tier.</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    if tier == "Healthy":
+        action_title = "🟢 Standard Flight Readiness Protocol"
+        action_items = [
+            "Maintain standard line-maintenance cycle intervals and automated health telemetry logging.",
+            "Continue standard flight operations within unrestricted flight envelopes.",
+            "Next scheduled borescope and hot-section inspection at standard 100-cycle overhaul interval.",
+            "Verify all sensor calibrations match OEM nominal thresholds during regular scheduled downtime.",
+        ]
+        action_border = "#16a34a"
+        action_bg = "#f0fdf4" if not _dm else "#1e293b"
+    elif tier == "Monitor":
+        action_title = "🔵 Enhanced Observational Protocol"
+        action_items = [
+            "Increase high-frequency sensor logging frequency from 1 Hz to 5 Hz on next flight leg.",
+            "Flag engine for routine oil analysis and magnetic chip detector inspection within 10 cycles.",
+            "Cross-reference compressor bleed valve and turbine outlet temperature logs for slight thermal creep.",
+            "Notify maintenance operations control (MOC) of mild sensor drift; no immediate flight grounding required.",
+        ]
+        action_border = "#2563eb"
+        action_bg = "#eff6ff" if not _dm else "#1e293b"
+    elif tier == "Warning":
+        action_title = "🟡 Pre-emptive Maintenance & Inspection Warning"
+        action_items = [
+            "Schedule focused borescope inspection of high-pressure turbine (HPT) blades within the next 15–20 cycles.",
+            "Restrict extended twin-engine operational performance standards (ETOPS) routing if applicable.",
+            "Prepare spare component staging (combustion nozzles, fuel flow meters, turbine shroud liners).",
+            "Perform engine ground-run vibration survey to isolate acoustic and rotor spool anomalies.",
+        ]
+        action_border = "#d97706"
+        action_bg = "#fffbeb" if not _dm else "#1e293b"
+    else:  # Critical
+        action_title = "🔴 Immediate Grounding & Overhaul Directive"
+        action_items = [
+            "GROUND ENGINE IMMEDIATELY: Halt flight dispatch and disconnect high-pressure bleed lines.",
+            "Initiate priority teardown and borescope examination for thermal fatigue cracking or rotor imbalance.",
+            "Coordinate with propulsion engineering to perform complete engine exchange with overhaul spare.",
+            "Download full flight data recorder (FDR) telemetry packet for root-cause failure mode assessment.",
+        ]
+        action_border = "#dc2626"
+        action_bg = "#fef2f2" if not _dm else "#1e293b"
+
+    items_html = "".join([f"<li style='margin-bottom:8px;line-height:1.5;'>{it}</li>" for it in action_items])
+    st.markdown(
+f"""<div style="background:{action_bg};border-left:5px solid {action_border};border-radius:10px;padding:18px 22px;margin-bottom:15px;">
+<div style="font-size:16px;font-weight:800;color:{action_border};margin-bottom:10px;">{action_title}</div>
+<ul style="margin:0;padding-left:20px;font-size:14px;color:{banner_txt};">
+{items_html}
+</ul>
+</div>""",
+        unsafe_allow_html=True,
+    )
+
+
 
 st.caption(
     f"AeroGuard · Safer Skies, Smarter Engines · Dataset: {fd_choice} · "
