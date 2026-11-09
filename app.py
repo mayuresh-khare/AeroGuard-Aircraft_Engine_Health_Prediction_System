@@ -1406,8 +1406,8 @@ HOTKEY_CONTROLLER_HTML = """
                                     <div style="font-size:9px;color:#94a3b8;">Cycle backward through modules</div>
                                 </div>
                                 <div>
-                                    <div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>Toggle Sidebar</span><div><kbd style="background:#081226;border:1px solid #f59e0b;color:#f59e0b;padding:1px 5px;border-radius:3px;">\\\\</kbd> or <kbd style="background:#081226;border:1px solid #f59e0b;color:#f59e0b;padding:1px 5px;border-radius:3px;">B</kbd></div></div>
-                                    <div style="font-size:9px;color:#94a3b8;">Wide-screen focus mode</div>
+                                    <div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>Toggle Sidebar</span><div><kbd style="background:#081226;border:1px solid #f59e0b;color:#f59e0b;padding:1px 6px;border-radius:3px;font-weight:800;">SPACE</kbd> or <kbd style="background:#081226;border:1px solid #f59e0b;color:#f59e0b;padding:1px 5px;border-radius:3px;">\\\\</kbd></div></div>
+                                    <div style="font-size:9px;color:#94a3b8;">Wide-screen focus mode (open/close)</div>
                                 </div>
                                 <div>
                                     <div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>Toggle Keymap</span><div><kbd style="background:#081226;border:1px solid #a855f7;color:#a855f7;padding:1px 5px;border-radius:3px;">?</kbd> or <kbd style="background:#081226;border:1px solid #a855f7;color:#a855f7;padding:1px 5px;border-radius:3px;">H</kbd></div></div>
@@ -1446,9 +1446,17 @@ HOTKEY_CONTROLLER_HTML = """
             const el = doc.activeElement;
             if (!el) return false;
             const tag = el.tagName ? el.tagName.toLowerCase() : '';
-            if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+            if (tag === 'textarea') return true;
             if (el.isContentEditable) return true;
-            if (el.getAttribute('role') === 'textbox' || el.getAttribute('role') === 'combobox') return true;
+            if (tag === 'input') {
+                const type = (el.type || 'text').toLowerCase();
+                // Do NOT block radio buttons, checkboxes, range sliders or buttons!
+                if (['text', 'number', 'email', 'password', 'search', 'tel', 'url'].includes(type)) {
+                    return true;
+                }
+                return false;
+            }
+            if (el.getAttribute('role') === 'textbox') return true;
             return false;
         }
 
@@ -1505,7 +1513,18 @@ HOTKEY_CONTROLLER_HTML = """
             const key = e.key;
             const code = e.code || '';
 
-            // Direct Number Jump 1-9 (Top row or numpad)
+            // 1. SPACEBAR: Toggle Sidebar (Expand / Collapse)
+            if (key === ' ' || code === 'Space') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (doc.activeElement && doc.activeElement.tagName.toLowerCase() === 'button') {
+                    doc.activeElement.blur();
+                }
+                toggleSidebar();
+                return;
+            }
+
+            // 2. Direct Number Jump 1-9 (Top row or numpad)
             let num = null;
             if (key >= '1' && key <= '9') {
                 num = parseInt(key, 10);
@@ -1524,7 +1543,7 @@ HOTKEY_CONTROLLER_HTML = """
                 return;
             }
 
-            // Sequential Cycling
+            // 3. Sequential Cycling
             if (key === 'ArrowRight' || key === ']' || code === 'BracketRight') {
                 e.preventDefault();
                 e.stopPropagation();
@@ -1538,7 +1557,7 @@ HOTKEY_CONTROLLER_HTML = """
                 return;
             }
 
-            // Toggle Sidebar: '\' or 'b' / 'B'
+            // 4. Toggle Sidebar: '\' or 'b' / 'B'
             if (key === '\\\\' || code === 'Backslash' || key === 'b' || key === 'B') {
                 e.preventDefault();
                 e.stopPropagation();
@@ -1546,7 +1565,7 @@ HOTKEY_CONTROLLER_HTML = """
                 return;
             }
 
-            // Keymap Modal: '?' or 'h' / 'H'
+            // 5. Keymap Modal: '?' or 'h' / 'H'
             if (key === '?' || (key === '/' && e.shiftKey) || (code === 'Slash' && e.shiftKey) || key === 'h' || key === 'H') {
                 e.preventDefault();
                 e.stopPropagation();
@@ -1554,7 +1573,7 @@ HOTKEY_CONTROLLER_HTML = """
                 return;
             }
 
-            // Close Modal on Escape
+            // 6. Close Modal on Escape
             if (key === 'Escape') {
                 const modal = doc.getElementById('aeroguard-keymap-modal');
                 if (modal && modal.style.display !== 'none') {
@@ -1564,14 +1583,18 @@ HOTKEY_CONTROLLER_HTML = """
             }
         }
 
-        // Attach to parent doc and window using capture phase
-        if (!win.__aeroguard_listener_attached) {
-            win.__aeroguard_listener_attached = true;
-            doc.addEventListener('keydown', handleKeyDown, true);
-            win.addEventListener('keydown', handleKeyDown, true);
-            document.addEventListener('keydown', handleKeyDown, true);
-            window.addEventListener('keydown', handleKeyDown, true);
+        // Always re-bind handler on parent doc/window
+        if (win.__aeroguard_handler) {
+            doc.removeEventListener('keydown', win.__aeroguard_handler, true);
+            win.removeEventListener('keydown', win.__aeroguard_handler, true);
+            document.removeEventListener('keydown', win.__aeroguard_handler, true);
+            window.removeEventListener('keydown', win.__aeroguard_handler, true);
         }
+        win.__aeroguard_handler = handleKeyDown;
+        doc.addEventListener('keydown', handleKeyDown, true);
+        win.addEventListener('keydown', handleKeyDown, true);
+        document.addEventListener('keydown', handleKeyDown, true);
+        window.addEventListener('keydown', handleKeyDown, true);
         createModal();
     } catch (err) {
         console.warn("AeroGuard Hotkey Controller:", err);
