@@ -1,6 +1,7 @@
 import os
 import glob
 import json
+import time
 import datetime as dt
 
 import numpy as np
@@ -863,7 +864,7 @@ with st.sidebar:
 
     page = st.radio(
         "Navigation",
-        ["🏠 Dashboard", "📈 Engine Monitoring", "🗄️ Sensor Data", "🔧 Maintenance", "⚠️ Risk Detection", "🔍 Anomaly Detection", "🎯 RUL Improvement", "🩺 Engine Health Score"],
+        ["🏠 Dashboard", "📈 Engine Monitoring", "🗄️ Sensor Data", "🔧 Maintenance", "⚠️ Risk Detection", "🔍 Anomaly Detection", "🎯 RUL Improvement", "🩺 Engine Health Score", "📡 Real-Time Monitoring"],
         label_visibility="collapsed",
         key="nav_page",
     )
@@ -1004,6 +1005,7 @@ page_titles = {
     "🔍 Anomaly Detection": ("Sensor Anomaly Detection", "Identify abnormal sensor readings · ML-based z-score & trend analysis"),
     "🎯 RUL Improvement": ("RUL Prediction Improvement", "Feature-engineered machine learning model · 45.7% lower error · Model comparison"),
     "🩺 Engine Health Score": ("Engine Health Score System", "Multi-factor prognostic health index · Healthy · Monitor · Warning · Critical"),
+    "📡 Real-Time Monitoring": ("Real-Time Aircraft Engine Monitoring", "Continuous cycle-by-cycle sensor stream · Live RUL, health status & automated alerts"),
 }
 title_text, sub_text = page_titles[page]
 st.markdown(
@@ -2987,6 +2989,536 @@ f"""<div style="background:{action_bg};border-left:5px solid {action_border};bor
 </div>""",
         unsafe_allow_html=True,
     )
+
+
+# ==========================================================================
+# PAGE 9 — REAL-TIME ENGINE MONITORING (TASK 5)
+# ==========================================================================
+elif page == "📡 Real-Time Monitoring":
+
+    max_cycles = len(engine_df)
+
+    # Initialize streaming session states
+    if "stream_engine_id" not in st.session_state or st.session_state.stream_engine_id != engine_id:
+        st.session_state.stream_engine_id = engine_id
+        st.session_state.stream_cycle = 1
+        st.session_state.is_streaming = False
+
+    if "stream_cycle" not in st.session_state:
+        st.session_state.stream_cycle = 1
+    if "is_streaming" not in st.session_state:
+        st.session_state.is_streaming = False
+
+    # Clamp cycle
+    st.session_state.stream_cycle = max(1, min(int(st.session_state.stream_cycle), max_cycles))
+
+    # Precompute fast batch arrays for the selected engine
+    all_imp_preds, _ = predict_improved_rul_batch(imp_model, imp_scaler, imp_feats, engine_df)
+    all_traj_scores = compute_health_trajectory(engine_df, all_imp_preds)
+    all_cycles = engine_df["cycle"].values.astype(int) if "cycle" in engine_df.columns else np.arange(1, max_cycles + 1)
+
+    _dm = st.session_state.get("dark_mode", False)
+    banner_txt = "#f8fafc" if _dm else "#0f172a"
+    sub_box_bg = "#334155" if _dm else "#ffffff"
+    sub_box_txt = "#cbd5e1" if _dm else "#475569"
+
+    # -----------------------------------------------------------------------
+    # 1. STREAM SIMULATION CONTROL CONSOLE
+    # -----------------------------------------------------------------------
+    st.markdown(
+        """<div class="panel-card">
+        <div class="panel-title">📡 Real-Time Telemetry Stream Controller</div>
+        <div class="panel-sub">Simulate a live aircraft flight data stream cycle-by-cycle. Play automatically or scrub manually through operating cycles.</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    ctrl_col1, ctrl_col2, ctrl_col3, ctrl_col4, ctrl_col5, ctrl_col6 = st.columns([1.2, 1, 1, 1, 1.2, 1.8])
+
+    with ctrl_col1:
+        if st.session_state.is_streaming:
+            if st.button("⏸ Pause Stream", key="btn_pause_stream", use_container_width=True):
+                st.session_state.is_streaming = False
+                st.rerun()
+        else:
+            if st.button("▶ Play Stream", key="btn_play_stream", use_container_width=True):
+                if st.session_state.stream_cycle >= max_cycles:
+                    st.session_state.stream_cycle = 1
+                st.session_state.is_streaming = True
+                st.rerun()
+
+    with ctrl_col2:
+        if st.button("⏮ Step -1", key="btn_step_back", use_container_width=True):
+            st.session_state.is_streaming = False
+            st.session_state.stream_cycle = max(1, st.session_state.stream_cycle - 1)
+            st.rerun()
+
+    with ctrl_col3:
+        if st.button("⏭ Step +1", key="btn_step_fwd", use_container_width=True):
+            st.session_state.is_streaming = False
+            st.session_state.stream_cycle = min(max_cycles, st.session_state.stream_cycle + 1)
+            st.rerun()
+
+    with ctrl_col4:
+        if st.button("🔄 Reset", key="btn_reset_stream", use_container_width=True):
+            st.session_state.is_streaming = False
+            st.session_state.stream_cycle = 1
+            st.rerun()
+
+    with ctrl_col5:
+        speed_opt = st.selectbox(
+            "Stream Speed",
+            ["Fast (0.2s)", "Normal (0.5s)", "Slow (1.0s)"],
+            index=1,
+            label_visibility="collapsed",
+            key="speed_select",
+        )
+        delay_map = {"Fast (0.2s)": 0.2, "Normal (0.5s)": 0.5, "Slow (1.0s)": 1.0}
+        stream_delay = delay_map[speed_opt]
+
+    with ctrl_col6:
+        if st.session_state.is_streaming:
+            st.markdown(
+                f"""<div style="background:#f0fdf4;border:1px solid #16a34a;color:#16a34a;border-radius:8px;padding:9px 12px;text-align:center;font-weight:800;font-size:12.5px;">
+                🟢 LIVE STREAMING · Cycle {st.session_state.stream_cycle} / {max_cycles}
+                </div>""", unsafe_allow_html=True)
+        else:
+            st.markdown(
+                f"""<div style="background:#eff6ff;border:1px solid #3b82f6;color:#1e40af;border-radius:8px;padding:9px 12px;text-align:center;font-weight:800;font-size:12.5px;">
+                ⏸ STREAM PAUSED · Cycle {st.session_state.stream_cycle} / {max_cycles}
+                </div>""", unsafe_allow_html=True)
+
+    # Scrubber Slider
+    scrub_val = st.slider(
+        "Flight Cycle Scrubber",
+        min_value=1,
+        max_value=max_cycles,
+        value=int(st.session_state.stream_cycle),
+        key="stream_cycle_slider",
+        help="Drag to scrub directly to any operating cycle in the engine lifespan.",
+    )
+    if scrub_val != st.session_state.stream_cycle and not st.session_state.is_streaming:
+        st.session_state.stream_cycle = scrub_val
+        st.rerun()
+
+    # Quick Jump Shortcuts
+    q1, q2, q3, q4 = st.columns(4)
+    with q1:
+        if st.button("🟢 Start of Service (Cycle 1)", use_container_width=True, key="qj_start"):
+            st.session_state.is_streaming = False
+            st.session_state.stream_cycle = 1
+            st.rerun()
+    with q2:
+        mid_c = max(1, int(max_cycles * 0.45))
+        if st.button(f"🔵 Mid-Life (Cycle {mid_c})", use_container_width=True, key="qj_mid"):
+            st.session_state.is_streaming = False
+            st.session_state.stream_cycle = mid_c
+            st.rerun()
+    with q3:
+        warn_c = max(1, int(max_cycles * 0.75))
+        if st.button(f"🟡 Degradation Phase (Cycle {warn_c})", use_container_width=True, key="qj_warn"):
+            st.session_state.is_streaming = False
+            st.session_state.stream_cycle = warn_c
+            st.rerun()
+    with q4:
+        crit_c = max(1, int(max_cycles * 0.95))
+        if st.button(f"🔴 Near End-of-Life (Cycle {crit_c})", use_container_width=True, key="qj_crit"):
+            st.session_state.is_streaming = False
+            st.session_state.stream_cycle = crit_c
+            st.rerun()
+
+    # -----------------------------------------------------------------------
+    # 2. CURRENT STREAM STATE COMPUTATION
+    # -----------------------------------------------------------------------
+    cur_c = int(st.session_state.stream_cycle)
+    cur_sub_df = engine_df.iloc[:cur_c]
+    cur_row = cur_sub_df.iloc[-1]
+    prev_row = cur_sub_df.iloc[-2] if len(cur_sub_df) > 1 else cur_row
+
+    cur_rul = float(all_imp_preds[cur_c - 1])
+    cur_health_score = float(all_traj_scores[cur_c - 1])
+    cur_health_info = compute_engine_health_score(cur_sub_df, cur_rul)
+    cur_tier = cur_health_info["tier"]
+    cur_tier_color = cur_health_info["color"]
+    cur_tier_icon = cur_health_info["icon"]
+
+    # Risk Level classification
+    if cur_rul < 30 or cur_health_score < 40:
+        cur_risk_lbl = "CRITICAL RISK"
+        cur_risk_col = "#dc2626"
+        cur_risk_icon = "🔴"
+        cur_risk_desc = "Imminent failure danger · Urgent action required"
+    elif cur_rul < 75 or cur_health_score < 60:
+        cur_risk_lbl = "WARNING RISK"
+        cur_risk_col = "#d97706"
+        cur_risk_icon = "🟡"
+        cur_risk_desc = "Accelerated component wear · Plan inspection"
+    elif cur_rul < 120 or cur_health_score < 80:
+        cur_risk_lbl = "MODERATE RISK"
+        cur_risk_col = "#2563eb"
+        cur_risk_icon = "🔵"
+        cur_risk_desc = "Mild operational drift · Elevated logging"
+    else:
+        cur_risk_lbl = "LOW / NORMAL RISK"
+        cur_risk_col = "#16a34a"
+        cur_risk_icon = "🟢"
+        cur_risk_desc = "All parameters nominal · Flight cleared"
+
+    # Maintenance Alert Message
+    if cur_tier == "Critical":
+        alert_title = f"🚨 CRITICAL ENGINE ALERT — FLIGHT CYCLE {cur_c}"
+        alert_msg = f"Turbofan health collapsed to {cur_health_score:.1f}/100. Predicted Remaining Useful Life is depleted to {cur_rul:.0f} cycles. IMMEDIATE GROUNDING & OVERHAUL MANDATED."
+        alert_bg = "#fef2f2" if not _dm else "#1e293b"
+        alert_col = "#dc2626"
+    elif cur_tier == "Warning":
+        alert_title = f"⚠️ PRE-EMPTIVE MAINTENANCE WARNING — FLIGHT CYCLE {cur_c}"
+        alert_msg = f"Noticeable thermodynamic and sensor drift detected. RUL decreased to {cur_rul:.0f} cycles. Schedule borescope inspection and hot-section staging within 15–20 cycles."
+        alert_bg = "#fffbeb" if not _dm else "#1e293b"
+        alert_col = "#d97706"
+    elif cur_tier == "Monitor":
+        alert_title = f"ℹ️ OPERATIONAL MONITORING NOTICE — FLIGHT CYCLE {cur_c}"
+        alert_msg = f"Mild sensor fluctuation observed. Engine health index is {cur_health_score:.1f}/100. Turbofan cleared for flight with enhanced high-frequency telemetry logging."
+        alert_bg = "#eff6ff" if not _dm else "#1e293b"
+        alert_col = "#2563eb"
+    else:
+        alert_title = f"✅ ALL FLIGHT SYSTEMS OPTIMAL — FLIGHT CYCLE {cur_c}"
+        alert_msg = f"All sensor channels operating within nominal envelopes. Overall health is {cur_health_score:.1f}/100 with {cur_rul:.0f} operating cycles remaining."
+        alert_bg = "#f0fdf4" if not _dm else "#1e293b"
+        alert_col = "#16a34a"
+
+    # Real-Time Live Alert Banner (Zero indentation)
+    st.markdown(
+f"""<div style="background:{alert_bg};border:2px solid {alert_col};border-radius:14px;padding:18px 22px;margin:18px 0;box-shadow:0 4px 14px rgba(0,0,0,0.06);">
+<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+<div>
+<div style="font-size:16px;font-weight:900;color:{alert_col};margin-bottom:4px;">{alert_title}</div>
+<div style="font-size:13.5px;color:{banner_txt};line-height:1.5;">{alert_msg}</div>
+</div>
+<div style="text-align:right;background:{sub_box_bg};padding:8px 16px;border-radius:10px;border:1px solid {alert_col}44;">
+<span style="font-size:12px;font-weight:700;color:{sub_box_txt};">Telemetry Source:</span>
+<span style="font-size:13px;font-weight:800;color:{alert_col};margin-left:4px;">Live Stream Feed #{int(engine_id):02d}</span>
+</div>
+</div>
+</div>""",
+        unsafe_allow_html=True,
+    )
+
+    # -----------------------------------------------------------------------
+    # 3. LIVE KPI STREAM CARDS
+    # -----------------------------------------------------------------------
+    k1, k2, k3, k4 = st.columns(4)
+    with k1:
+        st.markdown(
+            f"""<div class="kpi-card">
+            <div class="kpi-label">📡 Live Flight Cycle</div>
+            <div class="kpi-value" style="color:#2563eb;">{cur_c} <span style="font-size:16px;color:{sub_box_txt};">/ {max_cycles}</span></div>
+            <div class="kpi-sub">{(cur_c/max_cycles*100):.1f}% of recorded lifespan elapsed</div>
+            </div>""", unsafe_allow_html=True)
+    with k2:
+        rul_delta = cur_rul - float(all_imp_preds[0])
+        st.markdown(
+            f"""<div class="kpi-card">
+            <div class="kpi-label">⏱️ Live Predicted RUL</div>
+            <div class="kpi-value" style="color:#2563eb;">{cur_rul:,.0f} cyc</div>
+            <div class="kpi-sub">Δ from initial: <b style="color:{'#dc2626' if rul_delta < 0 else '#16a34a'};">{rul_delta:+.0f} cyc</b></div>
+            </div>""", unsafe_allow_html=True)
+    with k3:
+        st.markdown(
+            f"""<div class="kpi-card">
+            <div class="kpi-label">🩺 Live Health Score</div>
+            <div class="kpi-value" style="color:{cur_tier_color};">{cur_health_score:.1f} <span style="font-size:16px;color:{sub_box_txt};">/ 100</span></div>
+            <div class="kpi-sub">Condition: <b style="color:{cur_tier_color};">{cur_tier_icon} {cur_tier}</b></div>
+            </div>""", unsafe_allow_html=True)
+    with k4:
+        st.markdown(
+            f"""<div class="kpi-card">
+            <div class="kpi-label">⚠️ Live Risk Status</div>
+            <div class="kpi-value" style="font-size:22px;color:{cur_risk_col};">{cur_risk_icon} {cur_risk_lbl.split()[0]}</div>
+            <div class="kpi-sub">{cur_risk_desc}</div>
+            </div>""", unsafe_allow_html=True)
+
+    # -----------------------------------------------------------------------
+    # 4. LIVE TELEMETRY STREAM OSCILLOSCOPE (Multi-Sensor Readings)
+    # -----------------------------------------------------------------------
+    st.markdown(
+        f"""<div class="panel-card">
+        <div class="panel-title">📈 Real-Time Multi-Sensor Telemetry Stream (Cycles 1 → {cur_c})</div>
+        <div class="panel-sub">Continuous flight sensor telemetry readings actively feeding into AeroGuard prognostic intelligence models.</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    fig_stream = go.Figure()
+
+    # Core sensor traces up to current cycle
+    stream_cycles_x = all_cycles[:cur_c]
+
+    fig_stream.add_trace(go.Scatter(
+        x=stream_cycles_x,
+        y=cur_sub_df[hpc_col],
+        name=f"HPC Temp ({hpc_col})",
+        line=dict(color="#ef4444", width=2.5),
+        mode="lines",
+        hovertemplate="Cycle %{x}: %{y:.1f} °C<extra>HPC Temp</extra>",
+    ))
+    fig_stream.add_trace(go.Scatter(
+        x=stream_cycles_x,
+        y=cur_sub_df[lpc_col],
+        name=f"LPC Temp ({lpc_col})",
+        line=dict(color="#f97316", width=2),
+        mode="lines",
+        hovertemplate="Cycle %{x}: %{y:.1f} °C<extra>LPC Temp</extra>",
+    ))
+    fig_stream.add_trace(go.Scatter(
+        x=stream_cycles_x,
+        y=cur_sub_df[press_col],
+        name=f"Combustor Pressure ({press_col})",
+        line=dict(color="#3b82f6", width=2),
+        mode="lines",
+        yaxis="y2",
+        hovertemplate="Cycle %{x}: %{y:.2f} psia<extra>Pressure</extra>",
+    ))
+    fig_stream.add_trace(go.Scatter(
+        x=stream_cycles_x,
+        y=cur_sub_df[rpm_col],
+        name=f"Core Speed ({rpm_col})",
+        line=dict(color="#8b5cf6", width=2),
+        mode="lines",
+        yaxis="y3",
+        hovertemplate="Cycle %{x}: %{y:.1f} rpm<extra>RPM</extra>",
+    ))
+
+    # Mark active head point
+    fig_stream.add_trace(go.Scatter(
+        x=[cur_c],
+        y=[float(cur_row[hpc_col])],
+        mode="markers",
+        name="Telemetry Head",
+        marker=dict(size=14, color="#ef4444", line=dict(color="#ffffff", width=2.5)),
+        hoverinfo="skip",
+    ))
+
+    fig_stream.update_layout(**styled_layout(
+        height=380,
+        margin=dict(l=10, r=40, t=20, b=10),
+        xaxis=dict(title="Operating Cycle", range=[1, max_cycles]),
+        yaxis=dict(title="Temperature (°C)", title_font=dict(color="#ef4444")),
+        yaxis2=dict(title="Pressure (psia)", title_font=dict(color="#3b82f6"), overlaying="y", side="right", showgrid=False),
+        yaxis3=dict(title="Core Speed (rpm)", title_font=dict(color="#8b5cf6"), overlaying="y", side="right", position=0.95, showgrid=False, visible=False),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    ))
+    st.plotly_chart(fig_stream, use_container_width=True, key="realtime_stream_chart")
+
+    # -----------------------------------------------------------------------
+    # 5. DUAL OSCILLOSCOPE: LIVE RUL DECAY & HEALTH SCORE TRAJECTORY
+    # -----------------------------------------------------------------------
+    d_col1, d_col2 = st.columns(2)
+
+    with d_col1:
+        st.markdown(
+            f"""<div class="panel-card">
+            <div class="panel-title">⏱️ Real-Time Predicted RUL Decay</div>
+            <div class="panel-sub">Continuous prognostic forecast as flight hours accumulate.</div>
+            </div>""", unsafe_allow_html=True)
+
+        fig_rul_live = go.Figure()
+        fig_rul_live.add_trace(go.Scatter(
+            x=stream_cycles_x,
+            y=all_imp_preds[:cur_c],
+            mode="lines",
+            name="Predicted RUL",
+            line=dict(color="#2563eb", width=3),
+            hovertemplate="Cycle %{x}: %{y:.0f} cycles<extra>Predicted</extra>",
+        ))
+        if "RUL" in engine_df.columns:
+            fig_rul_live.add_trace(go.Scatter(
+                x=stream_cycles_x,
+                y=engine_df["RUL"].values[:cur_c],
+                mode="lines",
+                name="Ground Truth RUL",
+                line=dict(color="#10b981", width=2, dash="dash"),
+                hovertemplate="Cycle %{x}: %{y:.0f} cycles<extra>Ground Truth</extra>",
+            ))
+        fig_rul_live.add_trace(go.Scatter(
+            x=[cur_c],
+            y=[cur_rul],
+            mode="markers+text",
+            name="Current RUL",
+            marker=dict(size=12, color="#2563eb", line=dict(color="#ffffff", width=2)),
+            text=[f"  {cur_rul:.0f} cyc"],
+            textposition="top right",
+            hoverinfo="skip",
+        ))
+        fig_rul_live.update_layout(**styled_layout(
+            height=300,
+            margin=dict(l=10, r=10, t=10, b=10),
+            xaxis=dict(title="Operating Cycle", range=[1, max_cycles]),
+            yaxis=dict(title="Remaining Cycles"),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        ))
+        st.plotly_chart(fig_rul_live, use_container_width=True, key="live_rul_decay_chart")
+
+    with d_col2:
+        st.markdown(
+            f"""<div class="panel-card">
+            <div class="panel-title">🩺 Real-Time Health Index Trajectory</div>
+            <div class="panel-sub">Multi-factor prognostic health score across degradation zones.</div>
+            </div>""", unsafe_allow_html=True)
+
+        fig_hlth_live = go.Figure()
+        fig_hlth_live.add_hrect(y0=80, y1=100, fillcolor="#16a34a", opacity=0.10, line_width=0)
+        fig_hlth_live.add_hrect(y0=60, y1=80, fillcolor="#2563eb", opacity=0.10, line_width=0)
+        fig_hlth_live.add_hrect(y0=40, y1=60, fillcolor="#d97706", opacity=0.12, line_width=0)
+        fig_hlth_live.add_hrect(y0=0, y1=40, fillcolor="#dc2626", opacity=0.12, line_width=0)
+
+        fig_hlth_live.add_trace(go.Scatter(
+            x=stream_cycles_x,
+            y=all_traj_scores[:cur_c],
+            mode="lines",
+            name="Health Index",
+            line=dict(color=cur_tier_color, width=3),
+            hovertemplate="Cycle %{x}: %{y:.1f} / 100<extra>Health</extra>",
+        ))
+        fig_hlth_live.add_trace(go.Scatter(
+            x=[cur_c],
+            y=[cur_health_score],
+            mode="markers+text",
+            name="Current Health",
+            marker=dict(size=12, color=cur_tier_color, line=dict(color="#ffffff", width=2)),
+            text=[f"  {cur_health_score:.1f}"],
+            textposition="top right",
+            hoverinfo="skip",
+        ))
+        fig_hlth_live.update_layout(**styled_layout(
+            height=300,
+            margin=dict(l=10, r=10, t=10, b=10),
+            xaxis=dict(title="Operating Cycle", range=[1, max_cycles]),
+            yaxis=dict(title="Health Score (0–100)", range=[0, 105]),
+            showlegend=False,
+        ))
+        st.plotly_chart(fig_hlth_live, use_container_width=True, key="live_health_trajectory_chart")
+
+    # -----------------------------------------------------------------------
+    # 6. REAL-TIME SENSOR TELEMETRY READOUT MATRIX
+    # -----------------------------------------------------------------------
+    st.markdown(
+        f"""<div class="panel-card">
+        <div class="panel-title">🔬 Live Sensor Telemetry Matrix (Cycle {cur_c})</div>
+        <div class="panel-sub">Instantaneous telemetry packet values and delta deviations relative to preceding cycle.</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    sensor_cols_rt = [c for c in engine_df.columns if c.startswith("sensor_")]
+    telemetry_rows = []
+    for c in sensor_cols_rt:
+        s_all = engine_df[c]
+        v_now = float(cur_row[c])
+        v_prev = float(prev_row[c])
+        v_delta = v_now - v_prev
+        z_v = (v_now - s_all.mean()) / max(s_all.std(), 1e-9)
+        abs_z = abs(z_v)
+
+        if abs_z > 2.5:
+            st_sens = "🔴 Critical"
+        elif abs_z > 1.5:
+            st_sens = "🟡 Warning"
+        else:
+            st_sens = "🟢 Normal"
+
+        telemetry_rows.append({
+            "Sensor Channel": c,
+            "Description": SENSOR_LABELS.get(c, c),
+            "Current Reading": f"{v_now:,.2f}",
+            "Delta (Δ vs Last)": f"{v_delta:+,.2f}",
+            "Z-Score Deviation": f"{z_v:+.2f}σ",
+            "Telemetry Status": st_sens,
+        })
+
+    rt_sens_df = pd.DataFrame(telemetry_rows)
+    st.dataframe(rt_sens_df, use_container_width=True, hide_index=True, height=270)
+
+    # -----------------------------------------------------------------------
+    # 7. AUTOMATED REAL-TIME MAINTENANCE ALARMS & EVENT STREAM LOG
+    # -----------------------------------------------------------------------
+    st.markdown(
+        f"""<div class="panel-card">
+        <div class="panel-title">📜 Automated Real-Time Maintenance Event Stream Log</div>
+        <div class="panel-sub">Chronological ledger of operational transitions, critical sensor spikes, and prognostic triggers up to Cycle {cur_c}.</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    # Construct event stream up to cur_c
+    event_logs = []
+    # Event 1: Initial clearance
+    event_logs.append({
+        "Cycle": 1,
+        "Timestamp": "00:00:00",
+        "Severity": "🟢 Info",
+        "Event Description": "Turbofan engine operational dispatch. All primary systems nominal.",
+        "Maintenance Action": "Line clearance granted.",
+    })
+
+    prev_t = "Healthy"
+    for i in range(1, cur_c):
+        c_i = int(all_cycles[i])
+        h_i = float(all_traj_scores[i])
+        r_i = float(all_imp_preds[i])
+
+        # Check tier transition
+        if h_i >= 80:
+            now_t = "Healthy"
+        elif h_i >= 60:
+            now_t = "Monitor"
+        elif h_i >= 40:
+            now_t = "Warning"
+        else:
+            now_t = "Critical"
+
+        if now_t != prev_t:
+            if now_t == "Monitor":
+                event_logs.append({
+                    "Cycle": c_i,
+                    "Timestamp": f"{c_i//60:02d}:{(c_i*3)%60:02d}:14",
+                    "Severity": "🔵 Advisory",
+                    "Event Description": f"Engine transitioned to MONITOR tier (Score: {h_i:.1f}/100).",
+                    "Maintenance Action": "Increase telemetry logging frequency to 5 Hz.",
+                })
+            elif now_t == "Warning":
+                event_logs.append({
+                    "Cycle": c_i,
+                    "Timestamp": f"{c_i//60:02d}:{(c_i*3)%60:02d}:48",
+                    "Severity": "🟡 Warning",
+                    "Event Description": f"Engine entered WARNING degradation phase (Score: {h_i:.1f}/100, RUL: {r_i:.0f} cyc).",
+                    "Maintenance Action": "Schedule borescope inspection within 20 cycles.",
+                })
+            elif now_t == "Critical":
+                event_logs.append({
+                    "Cycle": c_i,
+                    "Timestamp": f"{c_i//60:02d}:{(c_i*3)%60:02d}:22",
+                    "Severity": "🔴 Critical",
+                    "Event Description": f"CRITICAL HEALTH COLLAPSE DETECTED (Score: {h_i:.1f}/100, RUL: {r_i:.0f} cyc).",
+                    "Maintenance Action": "GROUND ENGINE: Immediate overhaul and blade teardown mandated.",
+                })
+            prev_t = now_t
+
+    # Sort reverse chronological so latest event is at the top
+    events_display_df = pd.DataFrame(event_logs).sort_values("Cycle", ascending=False).reset_index(drop=True)
+    st.dataframe(events_display_df, use_container_width=True, hide_index=True, height=220)
+
+    # -----------------------------------------------------------------------
+    # 8. STREAMING AUTOMATION PLAYBACK LOOP
+    # -----------------------------------------------------------------------
+    if st.session_state.is_streaming:
+        if cur_c < max_cycles:
+            st.session_state.stream_cycle = cur_c + 1
+            time.sleep(stream_delay)
+            st.rerun()
+        else:
+            st.session_state.is_streaming = False
+            st.success("✅ Flight stream completed: Engine reached full operating lifecycle.")
+
 
 
 
