@@ -1461,16 +1461,30 @@ HOTKEY_CONTROLLER_HTML = """
         }
 
         function toggleSidebar() {
-            const collapsedBtn = doc.querySelector('[data-testid="stSidebarCollapsedControl"] button') 
-                              || doc.querySelector('[data-testid="stSidebarCollapsedControl"]');
-            if (collapsedBtn && win.getComputedStyle(collapsedBtn).display !== 'none' && collapsedBtn.offsetParent !== null) {
-                collapsedBtn.click();
-                return;
-            }
-            const collapseBtn = doc.querySelector('[data-testid="stSidebarCollapseButton"] button') 
-                             || doc.querySelector('section[data-testid="stSidebar"] button');
-            if (collapseBtn) {
-                collapseBtn.click();
+            const sidebar = doc.querySelector('section[data-testid="stSidebar"]');
+            const collapsedCtrl = doc.querySelector('[data-testid="stSidebarCollapsedControl"]');
+            
+            // Check if sidebar is currently closed / collapsed
+            const isClosed = Boolean(
+                (collapsedCtrl && (win.getComputedStyle(collapsedCtrl).display !== 'none' && win.getComputedStyle(collapsedCtrl).visibility !== 'hidden')) ||
+                (sidebar && sidebar.getAttribute('aria-expanded') === 'false')
+            );
+
+            if (isClosed) {
+                // Re-open sidebar
+                if (collapsedCtrl) {
+                    const btn = collapsedCtrl.querySelector('button') || collapsedCtrl;
+                    btn.click();
+                    collapsedCtrl.click();
+                }
+            } else {
+                // Close sidebar
+                const collapseBtn = doc.querySelector('[data-testid="stSidebarCollapseButton"] button')
+                                 || doc.querySelector('section[data-testid="stSidebar"] button[kind="header"]')
+                                 || doc.querySelector('section[data-testid="stSidebar"] button');
+                if (collapseBtn) {
+                    collapseBtn.click();
+                }
             }
         }
 
@@ -1482,7 +1496,16 @@ HOTKEY_CONTROLLER_HTML = """
             const targetLabel = labels[idx];
             const input = targetLabel.querySelector('input');
             if (input) {
-                input.checked = true;
+                try {
+                    const nativeSetter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'checked');
+                    if (nativeSetter && nativeSetter.set) {
+                        nativeSetter.set.call(input, true);
+                    } else {
+                        input.checked = true;
+                    }
+                } catch(e) {
+                    input.checked = true;
+                }
                 input.dispatchEvent(new Event('input', { bubbles: true }));
                 input.dispatchEvent(new Event('change', { bubbles: true }));
                 input.click();
@@ -1565,8 +1588,8 @@ HOTKEY_CONTROLLER_HTML = """
                 return;
             }
 
-            // 5. Keymap Modal: '?' or 'h' / 'H'
-            if (key === '?' || (key === '/' && e.shiftKey) || (code === 'Slash' && e.shiftKey) || key === 'h' || key === 'H') {
+            // 5. Keymap Modal: '?' or '/' or 'h' / 'H'
+            if (key === '?' || key === '/' || code === 'Slash' || key.toLowerCase() === 'h') {
                 e.preventDefault();
                 e.stopPropagation();
                 win.toggleAeroguardKeymap();
