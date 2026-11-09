@@ -244,29 +244,66 @@ st.markdown(
     /* Hide the top-right main-menu entirely */
     [data-testid="stMainMenuPopover"]{{ display:    none    !important; }}
 
-    /* ===== Sidebar collapsed toggle — styled as a dark pill button ===== */
-    [data-testid="stExpandSidebarButton"],
-    [data-testid="stSidebarCollapsedControl"] {{
-        visibility:    visible      !important;
-        opacity:       1            !important;
-        background:    #0b1730     !important;
-        border-radius: 0 10px 10px 0 !important;
-        box-shadow:    2px 0 12px rgba(0,0,0,.5) !important;
-        padding:       10px 6px    !important;
-        top:           50%         !important;
-        transform:     translateY(-50%) !important;
-        transition:    background .2s  !important;
+    /* ===== Sidebar Expand Button (Modern Tactical Drawer Handle) ===== */
+    [data-testid="stExpandSidebarButton"] {{
+        position:   fixed        !important;
+        top:        16px         !important;
+        left:       0            !important;
+        z-index:    999999       !important;
+        transform:  none         !important;
+        margin:     0            !important;
+        padding:    0            !important;
+        background: transparent  !important;
+        box-shadow: none         !important;
+        border:     none         !important;
     }}
-    [data-testid="stExpandSidebarButton"]:hover,
-    [data-testid="stSidebarCollapsedControl"]:hover {{
-        background: #1e3a5f !important;
+    [data-testid="stExpandSidebarButton"] button {{
+        display:         flex               !important;
+        align-items:     center             !important;
+        justify-content: center             !important;
+        background:      #0b1730            !important;
+        border:          1.5px solid #1e3a5f!important;
+        border-left:     none               !important;
+        border-radius:   0 8px 8px 0        !important;
+        padding:         8px 12px 8px 10px  !important;
+        box-shadow:      2px 2px 14px rgba(0,0,0,0.45) !important;
+        cursor:          pointer            !important;
+        transition:      all 0.2s ease      !important;
     }}
-    [data-testid="stExpandSidebarButton"] svg,
-    [data-testid="stSidebarCollapsedControl"] svg {{
-        fill:   #e7ecf7 !important;
-        stroke: #e7ecf7 !important;
-        width:  20px   !important;
-        height: 20px   !important;
+    [data-testid="stExpandSidebarButton"] button:hover {{
+        background:   #172a52                             !important;
+        border-color: #38bdf8                             !important;
+        box-shadow:   0 0 16px rgba(56,189,248,0.45)     !important;
+        transform:    translateX(3px)                     !important;
+    }}
+    [data-testid="stExpandSidebarButton"] button svg,
+    [data-testid="stExpandSidebarButton"] button svg * {{
+        fill:   #38bdf8 !important;
+        stroke: #38bdf8 !important;
+        color:  #38bdf8 !important;
+        width:  18px    !important;
+        height: 18px    !important;
+        filter: drop-shadow(0 0 4px rgba(56,189,248,0.6)) !important;
+    }}
+
+    /* ===== Sidebar Collapse Button (Inside Sidebar Header) ===== */
+    [data-testid="stSidebarCollapseButton"] button {{
+        background:    #0f1c38 !important;
+        border:        1px solid #1e3a5f !important;
+        border-radius: 6px !important;
+        padding:       5px 8px !important;
+        transition:    all 0.2s ease !important;
+    }}
+    [data-testid="stSidebarCollapseButton"] button:hover {{
+        background:   #172a52 !important;
+        border-color: #38bdf8 !important;
+        box-shadow:   0 0 10px rgba(56,189,248,0.3) !important;
+    }}
+    [data-testid="stSidebarCollapseButton"] button svg,
+    [data-testid="stSidebarCollapseButton"] button svg * {{
+        fill:   #38bdf8 !important;
+        stroke: #38bdf8 !important;
+        color:  #38bdf8 !important;
     }}
 
 
