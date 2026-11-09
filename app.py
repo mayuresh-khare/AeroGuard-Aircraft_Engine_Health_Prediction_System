@@ -19,22 +19,136 @@ TEXT_DARK = "#10182c"
 
 
 def styled_layout(**overrides):
-    """Base Plotly layout; dynamically switches between light / dark theme.
-    Pass any Plotly layout kwargs to override or extend the defaults."""
+    """Mission Control telemetry Plotly layout; dynamically switches between tactical dark / day theme."""
     _dm   = st.session_state.get("dark_mode", False)
     _text = "#e2e8f0" if _dm else TEXT_DARK
-    _pbg  = "#1e293b" if _dm else "white"
-    _grid = "#334155" if _dm else "#e5e9f2"
+    _pbg  = "#080e1a" if _dm else "white"
+    _grid = "rgba(56, 189, 248, 0.12)" if _dm else "#e2e8f0"
     layout = {
         "plot_bgcolor":  _pbg,
         "paper_bgcolor": _pbg,
-        "font":   dict(color=_text),
-        "xaxis":  dict(color=_text, gridcolor=_grid, title_font=dict(color=_text)),
-        "yaxis":  dict(color=_text, gridcolor=_grid, title_font=dict(color=_text)),
+        "font":   dict(family="'Consolas', 'JetBrains Mono', 'Fira Code', monospace", color=_text, size=11),
+        "xaxis":  dict(color=_text, gridcolor=_grid, gridwidth=1, griddash="dot", title_font=dict(color=_text, size=11.5)),
+        "yaxis":  dict(color=_text, gridcolor=_grid, gridwidth=1, griddash="dot", title_font=dict(color=_text, size=11.5)),
         "legend": dict(font=dict(color=_text)),
     }
     layout.update(overrides)
     return layout
+
+
+def render_turbofan_schematic_svg(hpc_temp: float, lpc_temp: float, pressure: float, rpm: float, cycle: int, health_label: str, health_color: str) -> str:
+    """Generates an authentic aerospace-grade SVG cross-section of a high-bypass turbofan engine with real-time station telemetry."""
+    _dm = st.session_state.get("dark_mode", False)
+    bg_c = "#070d18" if _dm else "#f8fafc"
+    stroke_c = "#38bdf8" if _dm else "#0284c7"
+    txt_c = "#f1f5f9" if _dm else "#0f172a"
+    sub_txt = "#94a3b8" if _dm else "#64748b"
+    card_bg = "rgba(11, 20, 38, 0.9)" if _dm else "rgba(255, 255, 255, 0.95)"
+    grid_c = "rgba(56, 189, 248, 0.08)" if _dm else "rgba(2, 132, 199, 0.08)"
+
+    svg = f"""<div style="background:{bg_c};border:1px solid {'#1e3a5f' if _dm else '#cbd5e1'};border-radius:10px;padding:12px;margin:8px 0;box-shadow:inset 0 0 20px rgba(0,0,0,0.3);">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-family:'Consolas','JetBrains Mono',monospace;font-size:10px;">
+    <span style="color:#38bdf8;font-weight:700;letter-spacing:0.5px;">// TURBOFAN CROSS-SECTION (STATIONS 1.0 - 8.0)</span>
+    <span style="background:{health_color}22;border:1px solid {health_color};color:{health_color};padding:2px 7px;border-radius:4px;font-weight:800;">{health_label.upper()}</span>
+</div>
+<svg viewBox="0 0 680 230" width="100%" height="210" xmlns="http://www.w3.org/2000/svg" style="display:block;">
+  <defs>
+    <pattern id="reticleGrid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <path d="M 20 0 L 0 0 0 20" fill="none" stroke="{grid_c}" stroke-width="1"/>
+    </pattern>
+    <linearGradient id="nacelleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e3a5f"/>
+      <stop offset="100%" stop-color="#091426"/>
+    </linearGradient>
+    <linearGradient id="flameGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f97316"/>
+      <stop offset="50%" stop-color="#ef4444"/>
+      <stop offset="100%" stop-color="#dc2626"/>
+    </linearGradient>
+    <linearGradient id="coreGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="50%" stop-color="#334155"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="680" height="230" fill="url(#reticleGrid)" rx="6"/>
+
+  <line x1="30" y1="115" x2="650" y2="115" stroke="{sub_txt}" stroke-width="1" stroke-dasharray="8,4" opacity="0.4"/>
+  <text x="655" y="118" fill="{sub_txt}" font-size="8" font-family="monospace">CL</text>
+
+  <path d="M 120,48 Q 280,38 520,62" fill="none" stroke="#38bdf8" stroke-width="2" stroke-dasharray="5,5" opacity="0.6"/>
+  <path d="M 120,182 Q 280,192 520,168" fill="none" stroke="#38bdf8" stroke-width="2" stroke-dasharray="5,5" opacity="0.6"/>
+  <text x="320" y="44" fill="#38bdf8" font-size="8.5" font-family="monospace" font-weight="bold">BYPASS DUCT STREAM (COLD AIRFLOW)</text>
+
+  <path d="M 45,28 Q 150,18 360,28 L 570,55 L 550,70 L 360,42 Q 150,34 55,42 Z" fill="url(#nacelleGrad)" stroke="{stroke_c}" stroke-width="1.5"/>
+  <path d="M 45,202 Q 150,212 360,202 L 570,175 L 550,160 L 360,188 Q 150,196 55,188 Z" fill="url(#nacelleGrad)" stroke="{stroke_c}" stroke-width="1.5"/>
+
+  <path d="M 170,72 L 490,85 L 530,115 L 490,145 L 170,158 Z" fill="url(#coreGrad)" stroke="#475569" stroke-width="1.5"/>
+
+  <path d="M 35,115 Q 65,100 105,100 L 105,130 Q 65,130 35,115 Z" fill="#0284c7" stroke="#38bdf8" stroke-width="1.5"/>
+
+  <rect x="105" y="42" width="12" height="146" rx="2" fill="#0284c7" stroke="#38bdf8" stroke-width="1.5"/>
+  <line x1="111" y1="42" x2="111" y2="188" stroke="#bae6fd" stroke-width="1"/>
+
+  <polygon points="180,76 210,81 210,149 180,154" fill="#0369a1" stroke="#38bdf8" stroke-width="1.2"/>
+  <line x1="195" y1="78" x2="195" y2="152" stroke="#7dd3fc" stroke-width="1" stroke-dasharray="2,2"/>
+
+  <polygon points="225,83 270,90 270,140 225,147" fill="#0284c7" stroke="#38bdf8" stroke-width="1.2"/>
+  <line x1="240" y1="85" x2="240" y2="145" stroke="#bae6fd" stroke-width="1" stroke-dasharray="2,2"/>
+  <line x1="255" y1="88" x2="255" y2="142" stroke="#bae6fd" stroke-width="1" stroke-dasharray="2,2"/>
+
+  <rect x="285" y="93" width="46" height="44" rx="4" fill="url(#flameGrad)" stroke="#fbbf24" stroke-width="1.5"/>
+  <circle cx="308" cy="115" r="8" fill="#fef08a" opacity="0.8"/>
+
+  <polygon points="345,91 370,86 370,144 345,139" fill="#dc2626" stroke="#f87171" stroke-width="1.2"/>
+
+  <polygon points="385,85 425,78 425,152 385,145" fill="#991b1b" stroke="#f87171" stroke-width="1.2"/>
+  <line x1="405" y1="82" x2="405" y2="148" stroke="#fca5a5" stroke-width="1" stroke-dasharray="2,2"/>
+
+  <polygon points="440,95 550,115 440,135" fill="#1e293b" stroke="#64748b" stroke-width="1.5"/>
+
+  <rect x="245" y="112" width="115" height="6" fill="#38bdf8" stroke="#0284c7" stroke-width="1"/>
+  <rect x="105" y="113.5" width="310" height="3" fill="#f1f5f9" stroke="#64748b" stroke-width="0.8"/>
+
+  <!-- Station 2.0 LPC -->
+  <g transform="translate(155, 170)">
+    <rect width="68" height="30" rx="4" fill="{card_bg}" stroke="#0284c7" stroke-width="1"/>
+    <text x="5" y="12" fill="{sub_txt}" font-size="7" font-family="monospace">ST 2.0 LPC</text>
+    <text x="5" y="24" fill="{txt_c}" font-size="10" font-family="monospace" font-weight="bold">{lpc_temp:,.1f}°C</text>
+  </g>
+
+  <!-- Station 3.0 HPC -->
+  <g transform="translate(230, 170)">
+    <rect width="70" height="30" rx="4" fill="{card_bg}" stroke="#38bdf8" stroke-width="1"/>
+    <text x="5" y="12" fill="{sub_txt}" font-size="7" font-family="monospace">ST 3.0 HPC</text>
+    <text x="5" y="24" fill="#38bdf8" font-size="10" font-family="monospace" font-weight="bold">{hpc_temp:,.1f}°C</text>
+  </g>
+
+  <!-- Station 4.0 Combustor -->
+  <g transform="translate(308, 170)">
+    <rect width="78" height="30" rx="4" fill="{card_bg}" stroke="#f59e0b" stroke-width="1"/>
+    <text x="5" y="12" fill="{sub_txt}" font-size="7" font-family="monospace">ST 4.0 PRESS</text>
+    <text x="5" y="24" fill="#fbbf24" font-size="10" font-family="monospace" font-weight="bold">{pressure:,.2f} psia</text>
+  </g>
+
+  <!-- Core Spool RPM -->
+  <g transform="translate(395, 170)">
+    <rect width="74" height="30" rx="4" fill="{card_bg}" stroke="#818cf8" stroke-width="1"/>
+    <text x="5" y="12" fill="{sub_txt}" font-size="7" font-family="monospace">CORE SPEED</text>
+    <text x="5" y="24" fill="#a5b4fc" font-size="10" font-family="monospace" font-weight="bold">{rpm:,.0f} RPM</text>
+  </g>
+
+  <!-- Fan / N1 Speed Indicator -->
+  <g transform="translate(45, 170)">
+    <rect width="60" height="30" rx="4" fill="{card_bg}" stroke="#38bdf8" stroke-width="1"/>
+    <text x="5" y="12" fill="{sub_txt}" font-size="7" font-family="monospace">N1 FAN</text>
+    <text x="5" y="24" fill="{txt_c}" font-size="10" font-family="monospace" font-weight="bold">ACTIVE</text>
+  </g>
+</svg>
+</div>"""
+    return svg
+
 
 # --------------------------------------------------------------------------
 # PAGE CONFIG
@@ -236,30 +350,122 @@ st.markdown(
     }}
 
 
-    /* ===== Hero banner ===== */
-    .hero-banner {{
-        background: linear-gradient(120deg, #0d2c66 0%, #123a86 55%, #1b4fb8 100%);
-        border-radius: 16px; padding: 28px 32px; color: white; margin-bottom: 22px;
+    /* ===== Radar Beacon Animation ===== */
+    @keyframes pulseGlow {{
+        0% {{ transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }}
+        70% {{ transform: scale(1.05); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }}
+        100% {{ transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }}
     }}
-    .hero-title {{ font-size: 28px; font-weight: 800; margin: 0; }}
-    .hero-sub {{ opacity: 0.85; margin-top: 4px; font-size: 14px; }}
+    .pulse-beacon {{
+        width: 10px; height: 10px; background: #10b981; border-radius: 50%;
+        display: inline-block; margin-right: 6px;
+        animation: pulseGlow 2s infinite;
+    }}
 
-    /* ===== Cards ===== */
+    /* ===== Tactical Sidebar Radio Buttons (Avionics Selector) ===== */
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label > div:first-child {{
+        display: none !important;
+    }}
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label {{
+        background: #0f1c38 !important;
+        border: 1px solid #1e3a5f !important;
+        border-radius: 8px !important;
+        padding: 9px 12px !important;
+        margin-bottom: 6px !important;
+        width: 100% !important;
+        display: flex !important;
+        align-items: center !important;
+        cursor: pointer !important;
+        transition: all 0.2s ease !important;
+    }}
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label:hover {{
+        background: #172a52 !important;
+        border-color: #38bdf8 !important;
+        box-shadow: 0 0 10px rgba(56, 189, 248, 0.2) !important;
+        transform: translateX(3px) !important;
+    }}
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label:has(input:checked) {{
+        background: linear-gradient(90deg, rgba(56, 189, 248, 0.2) 0%, rgba(30, 58, 95, 0.45) 100%) !important;
+        border: 1px solid #38bdf8 !important;
+        border-left: 4px solid #38bdf8 !important;
+        box-shadow: 0 0 14px rgba(56, 189, 248, 0.25) !important;
+    }}
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label:has(input:checked) p,
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label:has(input:checked) span {{
+        color: #38bdf8 !important;
+        font-weight: 800 !important;
+        letter-spacing: 0.3px !important;
+    }}
+
+    /* ===== Mission Control HUD Header Console ===== */
+    .hud-header {{
+        background: linear-gradient(135deg, #091326 0%, #0d1e3d 50%, #132b56 100%);
+        border: 1px solid rgba(56, 189, 248, 0.35);
+        border-radius: 12px;
+        padding: 20px 26px;
+        color: white;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    }}
+    .hero-banner {{
+        background: linear-gradient(135deg, #091326 0%, #0d1e3d 50%, #132b56 100%);
+        border: 1px solid rgba(56, 189, 248, 0.35);
+        border-radius: 12px;
+        padding: 20px 26px;
+        color: white;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+    }}
+    .hero-title {{ font-size: 24px; font-weight: 900; margin: 0; font-family: 'Consolas', 'JetBrains Mono', monospace; letter-spacing: -0.5px; }}
+    .hero-sub {{ opacity: 0.85; margin-top: 3px; font-size: 12.5px; font-family: 'Consolas', 'JetBrains Mono', monospace; }}
+
+    /* ===== Cockpit Instrumentation Cards ===== */
     .kpi-card, .panel-card {{
         background: {_card} !important; color: {_txt} !important;
-        border-radius: 14px; padding: 18px 20px;
-        box-shadow: 0 1px 3px {_shadow}; border: 1px solid {_border};
-        margin-bottom: 18px;
+        border-radius: 10px; padding: 16px 18px;
+        box-shadow: 0 2px 8px {_shadow}; border: 1px solid {_border};
+        border-top: 3px solid #38bdf8 !important;
+        margin-bottom: 16px;
     }}
     .kpi-card table, .panel-card table {{ color: {_txt} !important; width: 100%; }}
     .kpi-card td, .panel-card td, .kpi-card th, .panel-card th {{ color: {_txt} !important; }}
-    .kpi-label {{ color: {_lbl} !important; font-size: 13px; font-weight: 600; }}
-    .kpi-value {{ font-size: 26px; font-weight: 800; color: {_txt} !important; margin: 2px 0; }}
-    .kpi-sub {{ color: {_sub_c} !important; font-size: 12px; }}
+    .kpi-label {{
+        color: {_lbl} !important;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        font-family: 'Consolas', 'JetBrains Mono', monospace;
+    }}
+    .kpi-value {{
+        font-size: 26px;
+        font-weight: 900;
+        color: {_txt} !important;
+        margin: 3px 0;
+        font-family: 'Consolas', 'JetBrains Mono', monospace !important;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -0.5px;
+    }}
+    .kpi-sub {{
+        color: {_sub_c} !important;
+        font-size: 11.5px;
+        font-family: 'Consolas', 'JetBrains Mono', monospace;
+    }}
     .kpi-up {{ color: #16a34a !important; font-weight: 700; font-size: 12px; }}
     .kpi-down {{ color: #dc2626 !important; font-weight: 700; font-size: 12px; }}
-    .panel-title {{ font-size: 16px; font-weight: 800; color: {_txt} !important; }}
-    .panel-sub {{ color: {_sub_c} !important; font-size: 12.5px; margin-bottom: 10px; }}
+    .panel-title {{
+        font-size: 15px;
+        font-weight: 800;
+        color: {_txt} !important;
+        font-family: 'Consolas', 'JetBrains Mono', monospace;
+        letter-spacing: 0.2px;
+    }}
+    .panel-sub {{
+        color: {_sub_c} !important;
+        font-size: 11.5px;
+        margin-bottom: 8px;
+        font-family: 'Consolas', 'JetBrains Mono', monospace;
+    }}
     .status-pill {{
         display:inline-block; padding:3px 10px; border-radius:20px;
         background:#e8f9ee !important; color:#159654 !important; font-size:12px; font-weight:700;
@@ -979,11 +1185,17 @@ def evaluate_predictive_maintenance(rul_val: float, health_score: float, crit_co
 # --------------------------------------------------------------------------
 with st.sidebar:
     st.markdown(
-        "<div style='display:flex;align-items:center;gap:10px;padding:6px 0 18px 0;'>"
-        "<span style='font-size:26px;'>🛩️</span>"
-        "<div><div style='font-size:20px;font-weight:800;'>AeroGuard</div>"
-        "<div style='font-size:11px;opacity:.7;'>Aircraft Engine Intelligence</div></div>"
-        "</div>",
+        """<div style="padding:4px 0 14px 0;border-bottom:1px solid #1e3a5f;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:24px;filter:drop-shadow(0 0 8px #38bdf8);">🛰️</span>
+            <div>
+                <div style="font-size:17px;font-weight:900;letter-spacing:1px;color:#f8fafc;font-family:'Consolas','JetBrains Mono',monospace;">AEROGUARD</div>
+                <div style="font-size:10px;font-weight:700;color:#38bdf8;letter-spacing:1px;font-family:monospace;">FLIGHT INTELLIGENCE // MIL-STD</div>
+            </div>
+        </div>
+        </div>
+        <div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1px;margin-bottom:8px;font-family:monospace;">// CONSOLE NAVIGATION</div>
+        """,
         unsafe_allow_html=True,
     )
 
@@ -994,22 +1206,30 @@ with st.sidebar:
         key="nav_page",
     )
 
-    st.markdown("---")
-    st.markdown("**Engine Selection**")
+    st.markdown("<div style='font-size:10px;font-weight:800;color:#64748b;letter-spacing:1px;margin:16px 0 8px 0;font-family:monospace;'>// TELEMETRY ACQUISITION</div>", unsafe_allow_html=True)
+    st.markdown("**Dataset / Fleet Stream**")
     fd_choice = st.selectbox(
         "Dataset", ["FD001", "FD002", "FD003", "FD004"], label_visibility="collapsed", key="fd_choice"
     )
 
     df = load_dataset(fd_choice)
     unit_ids = sorted(df["unit"].unique().tolist()) if "unit" in df else [1]
+    st.markdown("**Engine Unit Designation**")
     engine_id = st.selectbox(
-        "Engine #", unit_ids, format_func=lambda u: f"Engine #{int(u):02d}", key="engine_id"
+        "Engine #", unit_ids, format_func=lambda u: f"Turbofan Unit #{int(u):02d}", key="engine_id", label_visibility="collapsed"
     )
 
-    st.markdown("---")
-    st.markdown("**System Status**")
-    st.markdown("🟢 **System Online**")
-    st.caption(f"Last updated: {dt.datetime.now().strftime('%H:%M:%S')}")
+    st.markdown("<div style='border-top:1px solid #1e3a5f;margin:16px 0 10px 0;'></div>", unsafe_allow_html=True)
+    st.markdown(
+        f"""<div style="font-family:'Consolas','JetBrains Mono',monospace;font-size:11px;color:#cbd5e1;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <span class="pulse-beacon"></span><b style="color:#10b981;">TELEMETRY LINK: ONLINE</b>
+        </div>
+        <div style="color:#64748b;font-size:10px;">SAMPLING: 10 Hz · UDP SYNC</div>
+        <div style="color:#64748b;font-size:10px;">SYS TIME: {dt.datetime.now().strftime('%H:%M:%S')}</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
 
 # --------------------------------------------------------------------------
 # THEME TOGGLE — fixed top-right icon button
@@ -1029,28 +1249,28 @@ st.markdown(
     }}
 
     /* ── Fixed top-right theme button container ── */
-    div[data-testid="stButton"]:has(button[data-testid="theme_fab"]) {{
-        position:  fixed !important;
-        top:       12px  !important;
-        right:     16px  !important;
-        left:      auto  !important;
-        z-index:   99999 !important;
-        width:     auto  !important;
+    div[data-testid="stButton"]:has(button[data-testid="theme_fab"]),
+    button[data-testid="theme_fab"] {{
+        position:  fixed     !important;
+        top:       14px      !important;
+        right:     20px      !important;
+        left:      auto      !important;
+        z-index:   999999    !important;
+        width:     44px      !important;
+        height:    44px      !important;
     }}
 
     /* ── The button itself — round icon pill ── */
     button[data-testid="theme_fab"] {{
-        width:         44px  !important;
-        height:        44px  !important;
         border-radius: 50%   !important;
         padding:       0     !important;
         font-size:     20px  !important;
         line-height:   44px  !important;
         text-align:    center !important;
-        background:    {'#1e293b' if _is_dark else '#ffffff'} !important;
-        color:         {'#f8fafc' if _is_dark else '#0f172a'} !important;
-        border:        2px solid {'#3b5ea6' if _is_dark else '#cbd5e1'} !important;
-        box-shadow:    0 2px 12px rgba(0,0,0,0.25) !important;
+        background:    {'#0f1c38' if _is_dark else '#ffffff'} !important;
+        color:         {'#38bdf8' if _is_dark else '#0f172a'} !important;
+        border:        2px solid {'#38bdf8' if _is_dark else '#cbd5e1'} !important;
+        box-shadow:    0 0 16px rgba(56,189,248,0.3) !important;
         cursor:        pointer  !important;
         transition:    background 0.3s, box-shadow 0.3s, transform 0.2s !important;
         user-select:   none !important;
@@ -1059,9 +1279,9 @@ st.markdown(
         justify-content: center !important;
     }}
     button[data-testid="theme_fab"]:hover {{
-        box-shadow: 0 4px 20px rgba(0,0,0,0.35) !important;
+        box-shadow: 0 0 24px rgba(56,189,248,0.5) !important;
         transform:  scale(1.1) !important;
-        background: {'#334155' if _is_dark else '#f1f5f9'} !important;
+        background: {'#162a54' if _is_dark else '#f1f5f9'} !important;
     }}
     button[data-testid="theme_fab"]:active {{
         transform: scale(0.95) !important;
@@ -1136,15 +1356,20 @@ page_titles = {
 title_text, sub_text = page_titles[page]
 st.markdown(
     f"""
-    <div class="hero-banner">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
+    <div class="hud-header">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;">
             <div>
-                <p class="hero-title">{title_text}</p>
-                <p class="hero-sub">{sub_text}</p>
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+                    <span class="pulse-beacon"></span>
+                    <span style="font-family:'Consolas','JetBrains Mono',monospace;font-size:10.5px;font-weight:800;letter-spacing:1.2px;color:#38bdf8;">AEROGUARD // FLIGHT TELEMETRY COMMAND CONSOLE</span>
+                    <span style="background:rgba(56,189,248,0.15);border:1px solid #38bdf8;color:#38bdf8;font-size:10px;font-weight:800;padding:2px 8px;border-radius:4px;font-family:monospace;">MIL-SPEC MONITORING</span>
+                </div>
+                <div style="font-size:24px;font-weight:900;margin:0;letter-spacing:-0.5px;color:#f8fafc;font-family:'Consolas','JetBrains Mono',monospace;">{title_text}</div>
+                <div style="font-size:12px;color:#94a3b8;font-family:'Consolas','JetBrains Mono',monospace;margin-top:2px;">{sub_text}</div>
             </div>
-            <div style="text-align:right;font-size:13px;opacity:.9;">
-                🟢 System Online &nbsp;|&nbsp; {dt.datetime.now().strftime('%b %d, %Y')} &nbsp;{dt.datetime.now().strftime('%H:%M')}
-                <br/>👤 Engine Operator &nbsp;·&nbsp; Engine #{int(engine_id):02d} &nbsp;·&nbsp; {fd_choice}
+            <div style="text-align:right;background:rgba(15,28,56,0.7);border:1px solid #1e3a5f;padding:10px 18px;border-radius:8px;font-family:'Consolas','JetBrains Mono',monospace;font-size:11.5px;color:#cbd5e1;">
+                <div><b style="color:#38bdf8;">UNIT:</b> ENG #{int(engine_id):02d} &nbsp;|&nbsp; <b style="color:#38bdf8;">FLEET:</b> {fd_choice} &nbsp;|&nbsp; <b style="color:#38bdf8;">RATE:</b> 10 Hz</div>
+                <div style="margin-top:3px;font-size:11px;color:#64748b;">UTC {dt.datetime.now(dt.timezone.utc).strftime('%H:%M:%S')}Z &nbsp;·&nbsp; {dt.datetime.now().strftime('%b %d, %Y')} &nbsp;|&nbsp; <span style="color:#10b981;font-weight:bold;">🟢 AIRWORTHY</span></div>
             </div>
         </div>
     </div>
@@ -1235,16 +1460,19 @@ if page == "🏠 Dashboard":
     with c2:
         st.markdown(
             f"""<div class="panel-card">
-            <div class="panel-title">🖼️ Engine Overview</div>
-            <div style="text-align:center;font-size:70px;margin:8px 0;">🛩️</div>
-            <table style="width:100%;font-size:14px;">
-                <tr><td>⚙️ Engine Cycle</td><td style="text-align:right;font-weight:700;">{cycle_now}</td></tr>
-                <tr><td>🔄 Rotational Speed</td><td style="text-align:right;font-weight:700;">{rpm:,.0f} RPM</td></tr>
-                <tr><td>📟 Pressure</td><td style="text-align:right;font-weight:700;">{pressure:,.2f} psia</td></tr>
-                <tr><td>🌡️ HPC Temperature</td><td style="text-align:right;font-weight:700;">{hpc_temp:,.1f} °C</td></tr>
-                <tr><td>🌡️ LPC Temperature</td><td style="text-align:right;font-weight:700;">{lpc_temp:,.1f} °C</td></tr>
+            <div class="panel-title">🛰️ Turbofan Digital Twin & Station Telemetry</div>
+            <div class="panel-sub">Engine #{int(engine_id):02d} · Twin-Spool High-Bypass Architecture</div>
+            {render_turbofan_schematic_svg(hpc_temp, lpc_temp, pressure, rpm, cycle_now, health_label, health_color)}
+            <table style="width:100%;font-size:12px;font-family:'Consolas','JetBrains Mono',monospace;margin-top:10px;">
+                <tr><td style="color:{_sub_c};">⚙️ OPERATING CYCLE</td><td style="text-align:right;font-weight:800;color:#38bdf8;">{cycle_now} cyc</td></tr>
+                <tr><td style="color:{_sub_c};">🔄 CORE SPEED (RPM)</td><td style="text-align:right;font-weight:800;color:#818cf8;">{rpm:,.0f} RPM</td></tr>
+                <tr><td style="color:{_sub_c};">📟 COMBUSTOR STATIC PRESS</td><td style="text-align:right;font-weight:800;color:#fbbf24;">{pressure:,.2f} psia</td></tr>
+                <tr><td style="color:{_sub_c};">🌡️ HPC OUTLET TEMP (ST 3)</td><td style="text-align:right;font-weight:800;color:#ef4444;">{hpc_temp:,.1f} °C</td></tr>
+                <tr><td style="color:{_sub_c};">🌡️ LPC OUTLET TEMP (ST 2)</td><td style="text-align:right;font-weight:800;color:#10b981;">{lpc_temp:,.1f} °C</td></tr>
             </table>
-            </div>""", unsafe_allow_html=True)
+            </div>""",
+            unsafe_allow_html=True,
+        )
 
     c3, c4 = st.columns([2, 1])
     with c3:
