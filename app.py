@@ -850,6 +850,131 @@ def get_fleet_health_summary(_df: pd.DataFrame, fd_key: str) -> pd.DataFrame:
 
 
 # --------------------------------------------------------------------------
+# PREDICTIVE MAINTENANCE INTELLIGENCE (TASK 6)
+# --------------------------------------------------------------------------
+def evaluate_predictive_maintenance(rul_val: float, health_score: float, crit_count: int, warn_count: int, subsystems: dict = None):
+    """
+    Evaluates multi-factor decision-making logic across:
+      1. RUL prognostic exhaustion (<=30 cyc immediate, <=75 cyc scheduled)
+      2. Health score physical degradation (<40 critical, <60 warning)
+      3. Abnormal sensor behavior (critical Z-scores >2.5, warning Z-scores >1.5)
+      4. Subsystem mechanical integrity
+
+    Returns comprehensive decision matrix:
+      - recommendation: clear text directive
+      - action_code: IMMEDIATE | SCHEDULED | MONITORING | NOMINAL
+      - clearance: flight clearance verdict
+      - urgency_index: 0 to 100% composite score
+      - triggers: list of triggered decision rules
+      - target_subsystem: primary affected subsystem
+      - downtime: estimated maintenance turnaround hours
+      - color & badge
+    """
+    triggers = []
+    if rul_val <= 30:
+        triggers.append(f"⏱️ RUL Critical Threshold: Only {rul_val:.0f} operating cycles remaining (<= 30 cyc).")
+    elif rul_val <= 75:
+        triggers.append(f"⏱️ RUL Degradation Warning: {rul_val:.0f} operating cycles remaining (<= 75 cyc).")
+    elif rul_val <= 120:
+        triggers.append(f"⏱️ RUL Observational Range: {rul_val:.0f} operating cycles remaining (<= 120 cyc).")
+
+    if health_score < 40:
+        triggers.append(f"🩺 Engine Health Critical: Index is {health_score:.1f}/100 (< 40 critical threshold).")
+    elif health_score < 60:
+        triggers.append(f"🩺 Engine Health Warning: Index is {health_score:.1f}/100 (< 60 warning threshold).")
+    elif health_score < 80:
+        triggers.append(f"🩺 Engine Health Observational: Index is {health_score:.1f}/100 (< 80 monitor threshold).")
+
+    if crit_count > 0:
+        triggers.append(f"🔬 Critical Sensor Anomalies: {crit_count} channel(s) exceed |Z| > 2.5σ extreme outlier limit.")
+    if warn_count > 0:
+        triggers.append(f"🔬 Warning Sensor Fluctuations: {warn_count} channel(s) exceed |Z| > 1.5σ elevated variance limit.")
+
+    # Calculate Maintenance Urgency Index (0 to 100%)
+    rul_urgency = min(100.0, max(0.0, (150.0 - rul_val) / 1.5))
+    health_urgency = max(0.0, min(100.0, 100.0 - health_score))
+    anomaly_urgency = min(100.0, crit_count * 30.0 + warn_count * 10.0)
+    urgency_index = round(0.35 * rul_urgency + 0.35 * health_urgency + 0.30 * anomaly_urgency, 1)
+
+    # Primary target subsystem
+    target_sub = "Turbine & Hot Section"
+    if subsystems:
+        sorted_subs = sorted(subsystems.items(), key=lambda kv: kv[1])
+        if sorted_subs:
+            target_sub = sorted_subs[0][0]
+
+    # Decision classification
+    if rul_val <= 30 or crit_count >= 2 or health_score < 40 or urgency_index >= 75:
+        action_code = "IMMEDIATE"
+        badge = "🔴 IMMEDIATE ACTION REQUIRED"
+        recommendation = "GROUND AIRCRAFT: Engine must be removed from active flight schedule. Immediate teardown and depot overhaul required."
+        clearance = "🚫 DISPATCH PROHIBITED (AOG — Aircraft On Ground)"
+        color = "#dc2626"
+        bg_color = "#fef2f2"
+        downtime = "36 – 72 Hours"
+        work_scope = [
+            f"Perform full borescope inspection of {target_sub} and high-pressure turbine blades.",
+            "Remove engine from wing pylon and transport to overhaul test-cell.",
+            "Inspect magnetic chip detectors (MCD) for metallic spalling debris.",
+            "Replace thermal barrier coatings and turbine nozzle guide vanes.",
+        ]
+    elif rul_val <= 75 or crit_count >= 1 or warn_count >= 3 or health_score < 60 or urgency_index >= 50:
+        action_code = "SCHEDULED"
+        badge = "🟡 SCHEDULED MAINTENANCE RECOMMENDED"
+        recommendation = f"SCHEDULE INSPECTION: Pre-emptive maintenance required within 15–20 cycles. Accelerated wear detected in {target_sub}."
+        clearance = "⚠️ CONDITIONAL DISPATCH (Max 20 flight cycles before mandatory shop visit)"
+        color = "#d97706"
+        bg_color = "#fffbeb"
+        downtime = "12 – 24 Hours"
+        work_scope = [
+            f"Schedule focused borescope inspection of {target_sub}.",
+            "Inspect compressor bleed valves and fuel manifold nozzles.",
+            "Perform engine ground run vibration analysis across spool RPM ranges.",
+            "Verify sensor harness continuity and recalibrate thermistor probes.",
+        ]
+    elif rul_val <= 120 or warn_count >= 1 or health_score < 80 or urgency_index >= 25:
+        action_code = "MONITORING"
+        badge = "🔵 ENHANCED MONITORING RECOMMENDED"
+        recommendation = "WATCHLIST MONITORING: Turbofan is safe for dispatch with enhanced sensor telemetry sampling. No immediate component replacement needed."
+        clearance = "ℹ️ CLEARED FOR DISPATCH (Enhanced Telemetry Logging Active)"
+        color = "#2563eb"
+        bg_color = "#eff6ff"
+        downtime = "2 – 4 Hours (Turnaround Check)"
+        work_scope = [
+            "Conduct walkaround visual inspection of fan blades and exhaust cone.",
+            "Sample lubrication oil for spectrographic analysis at next hub turn.",
+            "Increase high-frequency sensor logging rate to 5 Hz on next flight leg.",
+        ]
+    else:
+        action_code = "NOMINAL"
+        badge = "🟢 NO ACTION REQUIRED"
+        recommendation = "ALL SYSTEMS NOMINAL: Engine is operating well within standard operational envelopes. Normal service schedule applies."
+        clearance = "✅ UNRESTRICTED FLIGHT CLEARANCE"
+        color = "#16a34a"
+        bg_color = "#f0fdf4"
+        downtime = "0 Hours (Standard Transit Check)"
+        work_scope = [
+            "Perform standard pre-flight visual walkaround.",
+            "Continue standard line maintenance cycle intervals.",
+        ]
+
+    return {
+        "action_code": action_code,
+        "badge": badge,
+        "recommendation": recommendation,
+        "clearance": clearance,
+        "urgency_index": urgency_index,
+        "color": color,
+        "bg_color": bg_color,
+        "downtime": downtime,
+        "triggers": triggers,
+        "target_subsystem": target_sub,
+        "work_scope": work_scope,
+    }
+
+
+
+# --------------------------------------------------------------------------
 # SIDEBAR
 # --------------------------------------------------------------------------
 with st.sidebar:
@@ -864,7 +989,7 @@ with st.sidebar:
 
     page = st.radio(
         "Navigation",
-        ["🏠 Dashboard", "📈 Engine Monitoring", "🗄️ Sensor Data", "🔧 Maintenance", "⚠️ Risk Detection", "🔍 Anomaly Detection", "🎯 RUL Improvement", "🩺 Engine Health Score", "📡 Real-Time Monitoring"],
+        ["🏠 Dashboard", "📈 Engine Monitoring", "🗄️ Sensor Data", "🛠️ Predictive Maintenance", "⚠️ Risk Detection", "🔍 Anomaly Detection", "🎯 RUL Improvement", "🩺 Engine Health Score", "📡 Real-Time Monitoring"],
         label_visibility="collapsed",
         key="nav_page",
     )
@@ -1000,7 +1125,8 @@ page_titles = {
     "🏠 Dashboard": ("Aircraft Engine Monitoring Center", "Real-time sensor monitoring and predictive maintenance dashboard"),
     "📈 Engine Monitoring": ("Engine Monitoring", "Deep-dive sensor trends for the selected engine"),
     "🗄️ Sensor Data": ("Sensor Data", "Raw sensor readings and descriptive statistics"),
-    "🔧 Maintenance": ("Maintenance Center", "Health status, RUL trend and AI-driven recommendations"),
+    "🛠️ Predictive Maintenance": ("Predictive Maintenance Intelligence System", "Multi-factor decision-making engine · Sensor anomalies, RUL, health score & operational action protocols"),
+    "🔧 Maintenance": ("Predictive Maintenance Intelligence System", "Multi-factor decision-making engine · Sensor anomalies, RUL, health score & operational action protocols"),
     "⚠️ Risk Detection": ("Engine Failure Risk Detection", "ML-powered failure risk classification · Normal · Warning · Critical"),
     "🔍 Anomaly Detection": ("Sensor Anomaly Detection", "Identify abnormal sensor readings · ML-based z-score & trend analysis"),
     "🎯 RUL Improvement": ("RUL Prediction Improvement", "Feature-engineered machine learning model · 45.7% lower error · Model comparison"),
@@ -1306,55 +1432,326 @@ elif page == "🗄️ Sensor Data":
     st.dataframe(engine_df.describe().T, use_container_width=True)
 
 # ==========================================================================
-# PAGE 4 — MAINTENANCE
+# PAGE 4 — PREDICTIVE MAINTENANCE SYSTEM (TASK 6)
 # ==========================================================================
-elif page == "🔧 Maintenance":
-    m1, m2, m3 = st.columns(3)
-    with m1:
-        st.markdown(
-            f"""<div class="kpi-card"><div class="kpi-label">📊 Predicted RUL</div>
-            <div class="kpi-value">{rul_pred:,.0f} cycles</div>
-            <div class="kpi-sub">{'Model prediction' if model_used else 'Heuristic estimate'}</div></div>""",
-            unsafe_allow_html=True)
-    with m2:
-        st.markdown(
-            f"""<div class="kpi-card"><div class="kpi-label">❤️ Health Level</div>
-            <div class="kpi-value" style="color:{health_color};">{health_label}</div></div>""",
-            unsafe_allow_html=True)
-    with m3:
-        st.markdown(
-            f"""<div class="kpi-card"><div class="kpi-label">🚨 Risk Status</div>
-            <div class="kpi-value" style="color:{health_color};">{risk_label}</div></div>""",
-            unsafe_allow_html=True)
+elif page in ["🛠️ Predictive Maintenance", "🔧 Maintenance"]:
 
-    rul_series, _ = predict_rul_batch(model, scaler, engine_df)
+    _dm = st.session_state.get("dark_mode", False)
+    banner_txt = "#f8fafc" if _dm else "#0f172a"
+    sub_box_bg = "#334155" if _dm else "#ffffff"
+    sub_box_txt = "#cbd5e1" if _dm else "#475569"
+
+    # 1. Compute multi-factor inputs for currently selected engine
+    hlth_info = compute_engine_health_score(engine_df, rul_pred)
+    maint_eval = evaluate_predictive_maintenance(
+        rul_val=rul_pred,
+        health_score=hlth_info["total_score"],
+        crit_count=hlth_info["crit_count"],
+        warn_count=hlth_info["warn_count"],
+        subsystems=hlth_info["subsystems"],
+    )
+
+    m_code = maint_eval["action_code"]
+    m_badge = maint_eval["badge"]
+    m_rec = maint_eval["recommendation"]
+    m_clr = maint_eval["clearance"]
+    m_urgency = maint_eval["urgency_index"]
+    m_col = maint_eval["color"]
+    m_bg = maint_eval["bg_color"] if not _dm else "#1e293b"
+    m_downtime = maint_eval["downtime"]
+    m_target = maint_eval["target_subsystem"]
+
+    # -----------------------------------------------------------------------
+    # 1. MASTER DECISION & DISPATCH RECOMMENDATION BANNER
+    # -----------------------------------------------------------------------
     st.markdown(
-        """<div class="panel-card">
-        <div class="panel-title">📉 RUL Trend Across Cycles</div>
-        <div class="panel-sub">How the predicted remaining useful life changes cycle by cycle.</div>
-        </div>""", unsafe_allow_html=True)
-    fig3 = go.Figure()
-    fig3.add_trace(go.Scatter(x=engine_df["cycle"], y=rul_series, mode="lines",
-                               line=dict(color="#dc2626", width=2), fill="tozeroy",
-                               fillcolor="rgba(220,38,38,0.08)"))
-    fig3.add_hline(y=30, line_dash="dash", line_color="#f59e0b", annotation_text="Critical threshold")
-    fig3.update_layout(**styled_layout(
-        height=320, margin=dict(l=10, r=10, t=10, b=10),
-        xaxis_title="Engine Cycle", yaxis_title="Predicted RUL"))
-    st.plotly_chart(fig3, use_container_width=True, key="maint_rul_trend_chart")
+f"""<div style="background:{m_bg};border:2px solid {m_col};border-radius:16px;padding:22px 26px;margin-bottom:20px;box-shadow:0 4px 18px rgba(0,0,0,0.08);">
+<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:gap:16px;">
+<div>
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
+<span style="font-size:26px;font-weight:900;color:{m_col};letter-spacing:-0.5px;">{m_badge}</span>
+</div>
+<div style="font-size:14.5px;color:{banner_txt};max-width:700px;line-height:1.5;margin-bottom:8px;">{m_rec}</div>
+<div style="font-size:13px;font-weight:800;color:{m_col};background:{m_col}22;padding:4px 12px;border-radius:6px;display:inline-block;">{m_clr}</div>
+</div>
+<div style="text-align:right;background:{sub_box_bg};padding:14px 22px;border-radius:14px;border:1px solid {m_col}44;min-width:180px;">
+<div style="font-size:11px;font-weight:700;color:{sub_box_txt};text-transform:uppercase;letter-spacing:0.5px;">Maintenance Urgency Index</div>
+<div style="font-size:38px;font-weight:900;color:{m_col};line-height:1.1;">{m_urgency}<span style="font-size:18px;color:{sub_box_txt};font-weight:600;">%</span></div>
+<div style="font-size:12px;color:{m_col};font-weight:700;">Est. Turnaround: {m_downtime}</div>
+</div>
+</div>
+</div>""",
+        unsafe_allow_html=True,
+    )
 
-    if rul_pred < 30:
+    # -----------------------------------------------------------------------
+    # 2. DECISION KPI GRID
+    # -----------------------------------------------------------------------
+    k1, k2, k3, k4 = st.columns(4)
+    with k1:
         st.markdown(
-            f"""<div class="alert-box"><b>⚠️ Maintenance Alert</b><br/>
-            Predicted RUL is only <b>{rul_pred:,.0f} cycles</b> for Engine #{int(engine_id):02d}.
-            Schedule an inspection soon to avoid unplanned downtime.</div>""", unsafe_allow_html=True)
-    else:
+            f"""<div class="kpi-card">
+            <div class="kpi-label">🛠️ Maintenance Action</div>
+            <div class="kpi-value" style="font-size:22px;color:{m_col};">{m_code}</div>
+            <div class="kpi-sub">{m_badge.split()[0]} Decision Outcome</div>
+            </div>""", unsafe_allow_html=True)
+    with k2:
         st.markdown(
-            f"""<div class="alert-box"><b>✅ No Urgent Action Needed</b><br/>
-            Predicted RUL is <b>{rul_pred:,.0f} cycles</b>. Engine parameters are within expected operating bounds.
+            f"""<div class="kpi-card">
+            <div class="kpi-label">📊 Urgency Index (MUI)</div>
+            <div class="kpi-value" style="color:{m_col};">{m_urgency}%</div>
+            <div class="kpi-sub">Composite maintenance priority</div>
+            </div>""", unsafe_allow_html=True)
+    with k3:
+        st.markdown(
+            f"""<div class="kpi-card">
+            <div class="kpi-label">⏱️ Forecasted RUL</div>
+            <div class="kpi-value" style="color:#2563eb;">{rul_pred:,.0f} cyc</div>
+            <div class="kpi-sub">Cycle threshold: {30 if rul_pred < 75 else 75} cycles</div>
+            </div>""", unsafe_allow_html=True)
+    with k4:
+        st.markdown(
+            f"""<div class="kpi-card">
+            <div class="kpi-label">🎯 Target Subsystem</div>
+            <div class="kpi-value" style="font-size:19px;color:#7c3aed;">{m_target.split()[0]} Section</div>
+            <div class="kpi-sub">{m_target}</div>
             </div>""", unsafe_allow_html=True)
 
-    render_ai_recommendation_panel(rul_pred, health_label, hpc_change, risk_label, cycle_now)
+    # -----------------------------------------------------------------------
+    # 3. MULTI-FACTOR DECISION-MAKING LOGIC MATRIX
+    # -----------------------------------------------------------------------
+    st.markdown(
+        """<div class="panel-card">
+        <div class="panel-title">🧠 Multi-Factor Decision-Making Engine Logic</div>
+        <div class="panel-sub">Integrated evaluation of prognostic RUL, health score physical wear, sensor anomalies, and failure risk.</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    f1, f2, f3, f4 = st.columns(4)
+    with f1:
+        st.markdown(
+            f"""<div style="background:{sub_box_bg};border:1px solid {'#dc2626' if rul_pred <= 30 else ('#d97706' if rul_pred <= 75 else '#16a34a')};border-radius:10px;padding:14px;">
+            <div style="font-size:11px;font-weight:700;color:{sub_box_txt};">1. PROGNOSTIC RUL</div>
+            <div style="font-size:22px;font-weight:800;color:{'#dc2626' if rul_pred <= 30 else ('#d97706' if rul_pred <= 75 else '#16a34a')};">{rul_pred:,.0f} cyc</div>
+            <div style="font-size:12px;color:{sub_box_txt};line-height:1.4;margin-top:4px;">
+                {'🔴 Critical (<= 30 cyc)' if rul_pred <= 30 else ('🟡 Scheduled (<= 75 cyc)' if rul_pred <= 75 else '🟢 Normal Clearance')}
+            </div>
+            </div>""", unsafe_allow_html=True)
+    with f2:
+        h_val = hlth_info["total_score"]
+        st.markdown(
+            f"""<div style="background:{sub_box_bg};border:1px solid {hlth_info['color']};border-radius:10px;padding:14px;">
+            <div style="font-size:11px;font-weight:700;color:{sub_box_txt};">2. ENGINE HEALTH INDEX</div>
+            <div style="font-size:22px;font-weight:800;color:{hlth_info['color']};">{h_val:.1f} / 100</div>
+            <div style="font-size:12px;color:{sub_box_txt};line-height:1.4;margin-top:4px;">
+                {hlth_info['icon']} Tier: {hlth_info['tier']} Condition
+            </div>
+            </div>""", unsafe_allow_html=True)
+    with f3:
+        n_crit = hlth_info["crit_count"]
+        n_warn = hlth_info["warn_count"]
+        st.markdown(
+            f"""<div style="background:{sub_box_bg};border:1px solid {'#dc2626' if n_crit > 0 else ('#d97706' if n_warn > 0 else '#16a34a')};border-radius:10px;padding:14px;">
+            <div style="font-size:11px;font-weight:700;color:{sub_box_txt};">3. SENSOR ANOMALIES</div>
+            <div style="font-size:22px;font-weight:800;color:{'#dc2626' if n_crit > 0 else ('#d97706' if n_warn > 0 else '#16a34a')};">{n_crit} Crit · {n_warn} Warn</div>
+            <div style="font-size:12px;color:{sub_box_txt};line-height:1.4;margin-top:4px;">
+                {'🔴 Severe multi-channel drift' if n_crit > 0 else ('🟡 Elevated variance' if n_warn > 0 else '🟢 Nominal telemetry')}
+            </div>
+            </div>""", unsafe_allow_html=True)
+    with f4:
+        st.markdown(
+            f"""<div style="background:{sub_box_bg};border:1px solid {health_color};border-radius:10px;padding:14px;">
+            <div style="font-size:11px;font-weight:700;color:{sub_box_txt};">4. ML RISK LEVEL</div>
+            <div style="font-size:22px;font-weight:800;color:{health_color};">{risk_label}</div>
+            <div style="font-size:12px;color:{sub_box_txt};line-height:1.4;margin-top:4px;">
+                AeroGuard risk model assessment
+            </div>
+            </div>""", unsafe_allow_html=True)
+
+    # Active Trigger Rules Ledger
+    st.markdown("<div style='margin-top:14px;'>", unsafe_allow_html=True)
+    if maint_eval["triggers"]:
+        triggers_html = "".join([f"<li style='margin-bottom:6px;'>{t}</li>" for t in maint_eval["triggers"]])
+        st.markdown(
+f"""<div style="background:{m_col}15;border-left:4px solid {m_col};border-radius:8px;padding:12px 18px;margin-bottom:15px;">
+<div style="font-weight:800;font-size:13.5px;color:{m_col};margin-bottom:6px;">⚠️ Triggered Decision-Making Rules (Engine #{int(engine_id):02d}):</div>
+<ul style="margin:0;padding-left:18px;font-size:13px;color:{banner_txt};">
+{triggers_html}
+</ul>
+</div>""", unsafe_allow_html=True)
+    else:
+        st.markdown(
+f"""<div style="background:#f0fdf4;border-left:4px solid #16a34a;border-radius:8px;padding:12px 18px;margin-bottom:15px;">
+<div style="font-weight:800;font-size:13.5px;color:#16a34a;">✅ All Rules Satisfied: Engine #{int(engine_id):02d} operates within safe flight envelopes. No maintenance triggers active.</div>
+</div>""", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # -----------------------------------------------------------------------
+    # 4. INTERACTIVE "WHAT-IF" SCENARIO SIMULATOR & CONDITION STRESS-TESTER
+    # -----------------------------------------------------------------------
+    st.markdown(
+        """<div class="panel-card">
+        <div class="panel-title">🧪 Interactive Engine Condition Stress-Tester ("What-If" Simulator)</div>
+        <div class="panel-sub">Test and validate the predictive maintenance decision logic across diverse operational flight conditions and degradation states.</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    # Pre-set scenario buttons
+    st.markdown("**Choose a Benchmark Operational Condition Scenario:**")
+    sc1, sc2, sc3, sc4 = st.columns(4)
+
+    # Session state for simulator values
+    if "sim_rul" not in st.session_state:
+        st.session_state.sim_rul = float(rul_pred)
+    if "sim_health" not in st.session_state:
+        st.session_state.sim_health = float(hlth_info["total_score"])
+    if "sim_crit" not in st.session_state:
+        st.session_state.sim_crit = int(hlth_info["crit_count"])
+    if "sim_warn" not in st.session_state:
+        st.session_state.sim_warn = int(hlth_info["warn_count"])
+
+    with sc1:
+        if st.button("🟢 Scenario 1: Factory Fresh", use_container_width=True, key="sc_fresh"):
+            st.session_state.sim_rul = 195.0
+            st.session_state.sim_health = 96.0
+            st.session_state.sim_crit = 0
+            st.session_state.sim_warn = 0
+            st.rerun()
+    with sc2:
+        if st.button("🔵 Scenario 2: Mid-Life Flutter", use_container_width=True, key="sc_mid"):
+            st.session_state.sim_rul = 92.0
+            st.session_state.sim_health = 74.0
+            st.session_state.sim_crit = 0
+            st.session_state.sim_warn = 2
+            st.rerun()
+    with sc3:
+        if st.button("🟡 Scenario 3: Turbine Thermal Wear", use_container_width=True, key="sc_warn"):
+            st.session_state.sim_rul = 48.0
+            st.session_state.sim_health = 52.0
+            st.session_state.sim_crit = 0
+            st.session_state.sim_warn = 4
+            st.rerun()
+    with sc4:
+        if st.button("🔴 Scenario 4: Imminent Failure", use_container_width=True, key="sc_crit"):
+            st.session_state.sim_rul = 16.0
+            st.session_state.sim_health = 26.0
+            st.session_state.sim_crit = 2
+            st.session_state.sim_warn = 5
+            st.rerun()
+
+    # Manual interactive sliders
+    st.markdown("<div style='margin-top:10px;'><b>Or fine-tune custom stress-test parameters manually:</b></div>", unsafe_allow_html=True)
+    sl_col1, sl_col2, sl_col3, sl_col4 = st.columns(4)
+    with sl_col1:
+        sim_rul_in = st.slider("Simulated RUL (Cycles)", min_value=0, max_value=250, value=int(st.session_state.sim_rul), key="sl_rul")
+    with sl_col2:
+        sim_health_in = st.slider("Simulated Health Score", min_value=0, max_value=100, value=int(st.session_state.sim_health), key="sl_health")
+    with sl_col3:
+        sim_crit_in = st.slider("Critical Anomalies (|Z|>2.5σ)", min_value=0, max_value=6, value=int(st.session_state.sim_crit), key="sl_crit")
+    with sl_col4:
+        sim_warn_in = st.slider("Warning Anomalies (|Z|>1.5σ)", min_value=0, max_value=12, value=int(st.session_state.sim_warn), key="sl_warn")
+
+    # Evaluate simulated scenario
+    sim_res = evaluate_predictive_maintenance(sim_rul_in, sim_health_in, sim_crit_in, sim_warn_in)
+    sim_col = sim_res["color"]
+    sim_bg = sim_res["bg_color"] if not _dm else "#1e293b"
+
+    st.markdown(
+f"""<div style="background:{sim_bg};border:2px dashed {sim_col};border-radius:12px;padding:18px 22px;margin:15px 0;">
+<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+<div>
+<div style="font-size:12px;font-weight:700;color:{sub_box_txt};text-transform:uppercase;">🧪 Simulator Stress-Test Outcome:</div>
+<div style="font-size:20px;font-weight:900;color:{sim_col};margin:2px 0;">{sim_res['badge']}</div>
+<div style="font-size:13.5px;color:{banner_txt};max-width:650px;">{sim_res['recommendation']}</div>
+</div>
+<div style="text-align:right;">
+<div style="font-size:12px;color:{sub_box_txt};font-weight:700;">Simulated Urgency Index:</div>
+<div style="font-size:32px;font-weight:900;color:{sim_col};">{sim_res['urgency_index']}%</div>
+<div style="font-size:12px;font-weight:800;color:{sim_col};">{sim_res['clearance']}</div>
+</div>
+</div>
+</div>""", unsafe_allow_html=True)
+
+    # -----------------------------------------------------------------------
+    # 5. COMPONENT-LEVEL MAINTENANCE SCOPE & WORK ORDER
+    # -----------------------------------------------------------------------
+    st.markdown(
+        """<div class="panel-card">
+        <div class="panel-title">📋 Prescriptive Work Order & Shop Action Scope</div>
+        <div class="panel-sub">Targeted inspection directives, tooling requirements, and component staging guidelines.</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    wo_col1, wo_col2 = st.columns([1.3, 1.0])
+    with wo_col1:
+        st.markdown("**FAA / EASA Standard Work Order Directives:**")
+        wo_items = "".join([f"<li style='margin-bottom:8px;line-height:1.5;'>{item}</li>" for item in maint_eval["work_scope"]])
+        st.markdown(
+            f"""<div style="background:{sub_box_bg};border:1px solid {_dm and '#334155' or '#e2e8f0'};border-radius:10px;padding:16px 20px;">
+            <ul style="margin:0;padding-left:18px;font-size:13.5px;color:{banner_txt};">
+            {wo_items}
+            </ul>
+            </div>""", unsafe_allow_html=True)
+
+    with wo_col2:
+        st.markdown("**Component Degradation Radar:**")
+        subsys_dict = hlth_info["subsystems"]
+        for s_n, s_v in subsys_dict.items():
+            if s_v < 60:
+                bar_c = "#dc2626"
+            elif s_v < 80:
+                bar_c = "#d97706"
+            else:
+                bar_c = "#16a34a"
+            st.markdown(
+f"""<div style="margin-bottom:8px;font-size:12.5px;">
+<div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+<span style="font-weight:600;color:{banner_txt};">{s_n}</span>
+<span style="font-weight:800;color:{bar_c};">{s_v:.1f}/100</span>
+</div>
+<div style="width:100%;background:{_dm and '#334155' or '#e2e8f0'};height:6px;border-radius:3px;">
+<div style="width:{min(max(s_v,0),100)}%;background:{bar_c};height:6px;border-radius:3px;"></div>
+</div>
+</div>""", unsafe_allow_html=True)
+
+    # -----------------------------------------------------------------------
+    # 6. FLEET-WIDE MAINTENANCE PRIORITY QUEUE
+    # -----------------------------------------------------------------------
+    st.markdown(
+        f"""<div class="panel-card">
+        <div class="panel-title">🌐 Fleet Maintenance Dispatch & Priority Queue ({fd_choice})</div>
+        <div class="panel-sub">Rank-ordered maintenance scheduling queue across all engines in the dataset, prioritized by Maintenance Urgency Index (MUI).</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    fleet_maint_summary = get_fleet_health_summary(df, fd_choice)
+    if not fleet_maint_summary.empty:
+        fleet_queue_rows = []
+        for _, r in fleet_maint_summary.iterrows():
+            m_res = evaluate_predictive_maintenance(
+                rul_val=float(r["rul"]),
+                health_score=float(r["health_score"]),
+                crit_count=2 if r["tier"] == "Critical" else (1 if r["tier"] == "Warning" else 0),
+                warn_count=4 if r["tier"] == "Critical" else (2 if r["tier"] == "Warning" else (1 if r["tier"] == "Monitor" else 0)),
+            )
+            fleet_queue_rows.append({
+                "Engine": r["engine"],
+                "Urgency Index (MUI)": f"{m_res['urgency_index']:.1f}%",
+                "Action Verdict": f"{m_res['badge'].split()[0]} {m_res['action_code']}",
+                "Dispatch Clearance": m_res["clearance"].split()[0] + " " + m_res["clearance"].split()[1],
+                "Forecasted RUL": f"{r['rul']:.0f} cyc",
+                "Health Score": f"{r['health_score']:.1f} / 100",
+                "Est. Turnaround": m_res["downtime"].split()[0] + " " + m_res["downtime"].split()[1] + " " + m_res["downtime"].split()[2],
+                "_raw_urgency": m_res["urgency_index"],
+            })
+
+        fleet_queue_df = pd.DataFrame(fleet_queue_rows).sort_values("_raw_urgency", ascending=False).drop(columns=["_raw_urgency"]).reset_index(drop=True)
+        st.dataframe(fleet_queue_df, use_container_width=True, hide_index=True, height=300)
+
 
 # ==========================================================================
 # PAGE 5 — RISK DETECTION
