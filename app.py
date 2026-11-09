@@ -365,7 +365,11 @@ st.markdown(
 
     /* ===== Tactical Sidebar Radio Buttons (Avionics Selector) ===== */
     section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label > div:first-child {{
-        display: none !important;
+        position: absolute !important;
+        opacity: 0 !important;
+        width: 0 !important;
+        height: 0 !important;
+        pointer-events: none !important;
     }}
     section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label {{
         background: #0f1c38 !important;
@@ -437,9 +441,16 @@ st.markdown(
         box-shadow: 0 0 10px rgba(56, 189, 248, 0.6) !important;
     }}
 
-    /* Seamless hidden helper for keyboard listener */
+    /* Seamless hidden helper for keyboard listener — keeping iframe active */
     iframe[data-testid="stCustomComponentV1"] {{
-        display: none !important;
+        position: fixed !important;
+        top: -9999px !important;
+        left: -9999px !important;
+        width: 1px !important;
+        height: 1px !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+        border: none !important;
     }}
 
     /* ===== Smooth colour transitions on the whole app ===== */
@@ -1349,26 +1360,26 @@ HOTKEY_CONTROLLER_HTML = """
 (function() {
     try {
         const win = window.parent || window;
-        const doc = win.document;
+        const doc = win.document || document;
 
-        // Ensure keymap modal exists in parent document
-        if (!doc.getElementById('aeroguard-keymap-modal')) {
+        function createModal() {
+            if (doc.getElementById('aeroguard-keymap-modal')) return;
             const modal = doc.createElement('div');
             modal.id = 'aeroguard-keymap-modal';
-            modal.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999999;background:rgba(3,7,18,0.85);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);align-items:center;justify-content:center;';
+            modal.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483647;background:rgba(3,7,18,0.88);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);align-items:center;justify-content:center;';
             modal.innerHTML = `
-                <div style="background:linear-gradient(145deg, #091326 0%, #0d1e3d 100%);border:1.5px solid rgba(56,189,248,0.4);box-shadow:0 0 35px rgba(56,189,248,0.25), 0 20px 40px rgba(0,0,0,0.8);border-radius:12px;width:90%;max-width:580px;padding:22px 26px;color:#f8fafc;font-family:'Consolas','JetBrains Mono',monospace;">
+                <div style="background:linear-gradient(145deg, #091326 0%, #0d1e3d 100%);border:1.5px solid rgba(56,189,248,0.4);box-shadow:0 0 40px rgba(56,189,248,0.3), 0 25px 50px rgba(0,0,0,0.85);border-radius:12px;width:92%;max-width:600px;padding:24px 28px;color:#f8fafc;font-family:'Consolas','JetBrains Mono',monospace;">
                     <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(56,189,248,0.25);padding-bottom:12px;margin-bottom:16px;">
-                        <div style="display:flex;align-items:center;gap:8px;">
-                            <span style="font-size:20px;">🛰️</span>
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <span style="font-size:22px;">🛰️</span>
                             <div>
-                                <div style="font-size:14px;font-weight:900;letter-spacing:1px;color:#38bdf8;">AEROGUARD // FLIGHT AVIONICS KEYMAP</div>
-                                <div style="font-size:10px;color:#94a3b8;">MIL-STD CONSOLE SHORTCUT MATRIX</div>
+                                <div style="font-size:15px;font-weight:900;letter-spacing:1px;color:#38bdf8;">AEROGUARD // FLIGHT AVIONICS KEYMAP</div>
+                                <div style="font-size:10px;color:#94a3b8;">MIL-STD TELEMETRY SHORTCUT MATRIX</div>
                             </div>
                         </div>
-                        <button id="close-aeroguard-keymap-btn" style="background:#0f1c38;border:1px solid #1e3a5f;color:#e2e8f0;padding:4px 10px;border-radius:6px;cursor:pointer;font-family:monospace;font-size:11px;">[ESC / ×]</button>
+                        <button id="close-aeroguard-keymap-btn" style="background:#0f1c38;border:1px solid #1e3a5f;color:#e2e8f0;padding:5px 12px;border-radius:6px;cursor:pointer;font-family:monospace;font-size:11px;font-weight:700;">[ESC / ×]</button>
                     </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:11px;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;font-size:11px;">
                         <div>
                             <div style="color:#38bdf8;font-weight:800;font-size:10px;letter-spacing:1px;margin-bottom:8px;border-bottom:1px solid #1e293b;padding-bottom:4px;">DIRECT MODULE JUMP</div>
                             <div style="display:flex;flex-direction:column;gap:6px;">
@@ -1396,7 +1407,7 @@ HOTKEY_CONTROLLER_HTML = """
                                 </div>
                                 <div>
                                     <div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>Toggle Sidebar</span><div><kbd style="background:#081226;border:1px solid #f59e0b;color:#f59e0b;padding:1px 5px;border-radius:3px;">\\\\</kbd> or <kbd style="background:#081226;border:1px solid #f59e0b;color:#f59e0b;padding:1px 5px;border-radius:3px;">B</kbd></div></div>
-                                    <div style="font-size:9px;color:#94a3b8;">Expand / collapse wide screen</div>
+                                    <div style="font-size:9px;color:#94a3b8;">Wide-screen focus mode</div>
                                 </div>
                                 <div>
                                     <div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>Toggle Keymap</span><div><kbd style="background:#081226;border:1px solid #a855f7;color:#a855f7;padding:1px 5px;border-radius:3px;">?</kbd> or <kbd style="background:#081226;border:1px solid #a855f7;color:#a855f7;padding:1px 5px;border-radius:3px;">H</kbd></div></div>
@@ -1419,17 +1430,17 @@ HOTKEY_CONTROLLER_HTML = """
             if (closeBtn) closeBtn.addEventListener('click', function() { modal.style.display = 'none'; });
         }
 
-        // Global toggle function
         win.toggleAeroguardKeymap = function() {
-            const modal = doc.getElementById('aeroguard-keymap-modal');
+            let modal = doc.getElementById('aeroguard-keymap-modal');
+            if (!modal) {
+                createModal();
+                modal = doc.getElementById('aeroguard-keymap-modal');
+            }
             if (modal) {
-                modal.style.display = (modal.style.display === 'none' || modal.style.display === '') ? 'flex' : 'none';
+                const isHidden = (modal.style.display === 'none' || modal.style.display === '');
+                modal.style.display = isHidden ? 'flex' : 'none';
             }
         };
-
-        // Attach keydown listener only once
-        if (win.__aeroguard_hotkeys_active) return;
-        win.__aeroguard_hotkeys_active = true;
 
         function isInputActive() {
             const el = doc.activeElement;
@@ -1455,56 +1466,90 @@ HOTKEY_CONTROLLER_HTML = """
             }
         }
 
+        function selectModule(idx) {
+            const radioGroup = doc.querySelector('section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"]');
+            if (!radioGroup) return;
+            const labels = Array.from(radioGroup.querySelectorAll('label'));
+            if (!labels || !labels[idx]) return;
+            const targetLabel = labels[idx];
+            const input = targetLabel.querySelector('input');
+            if (input) {
+                input.checked = true;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+                input.click();
+            }
+            targetLabel.click();
+        }
+
         function cycleNav(dir) {
-            const labels = Array.from(doc.querySelectorAll('section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label'));
+            const radioGroup = doc.querySelector('section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"]');
+            if (!radioGroup) return;
+            const labels = Array.from(radioGroup.querySelectorAll('label'));
             if (!labels.length) return;
-            let activeIdx = labels.findIndex(lbl => lbl.querySelector('input:checked'));
+            let activeIdx = labels.findIndex(lbl => {
+                const inp = lbl.querySelector('input');
+                return inp && inp.checked;
+            });
             if (activeIdx === -1) activeIdx = 0;
             let nextIdx = activeIdx + dir;
             if (nextIdx < 0) nextIdx = labels.length - 1;
             if (nextIdx >= labels.length) nextIdx = 0;
-            labels[nextIdx].click();
+            selectModule(nextIdx);
         }
 
-        doc.addEventListener('keydown', function(e) {
+        function handleKeyDown(e) {
             if (e.ctrlKey || e.altKey || e.metaKey) return;
             if (isInputActive()) return;
 
             const key = e.key;
+            const code = e.code || '';
 
-            // Direct Number Jump 1-9
+            // Direct Number Jump 1-9 (Top row or numpad)
+            let num = null;
             if (key >= '1' && key <= '9') {
-                const idx = parseInt(key, 10) - 1;
-                const labels = doc.querySelectorAll('section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label');
-                if (labels && labels[idx]) {
-                    e.preventDefault();
-                    labels[idx].click();
-                }
+                num = parseInt(key, 10);
+            } else if (code.startsWith('Digit') && code.length === 6) {
+                const d = parseInt(code.replace('Digit', ''), 10);
+                if (d >= 1 && d <= 9) num = d;
+            } else if (code.startsWith('Numpad') && code.length === 7) {
+                const d = parseInt(code.replace('Numpad', ''), 10);
+                if (d >= 1 && d <= 9) num = d;
+            }
+
+            if (num !== null) {
+                e.preventDefault();
+                e.stopPropagation();
+                selectModule(num - 1);
                 return;
             }
 
-            // Sequential Cycling: ArrowRight / ']' and ArrowLeft / '['
-            if (key === 'ArrowRight' || key === ']') {
+            // Sequential Cycling
+            if (key === 'ArrowRight' || key === ']' || code === 'BracketRight') {
                 e.preventDefault();
+                e.stopPropagation();
                 cycleNav(1);
                 return;
             }
-            if (key === 'ArrowLeft' || key === '[') {
+            if (key === 'ArrowLeft' || key === '[' || code === 'BracketLeft') {
                 e.preventDefault();
+                e.stopPropagation();
                 cycleNav(-1);
                 return;
             }
 
-            // Toggle Sidebar: '\\\\' or 'b' / 'B'
-            if (key === '\\\\' || key === 'b' || key === 'B') {
+            // Toggle Sidebar: '\' or 'b' / 'B'
+            if (key === '\\\\' || code === 'Backslash' || key === 'b' || key === 'B') {
                 e.preventDefault();
+                e.stopPropagation();
                 toggleSidebar();
                 return;
             }
 
             // Keymap Modal: '?' or 'h' / 'H'
-            if (key === '?' || key === 'h' || key === 'H') {
+            if (key === '?' || (key === '/' && e.shiftKey) || (code === 'Slash' && e.shiftKey) || key === 'h' || key === 'H') {
                 e.preventDefault();
+                e.stopPropagation();
                 win.toggleAeroguardKeymap();
                 return;
             }
@@ -1517,7 +1562,17 @@ HOTKEY_CONTROLLER_HTML = """
                     modal.style.display = 'none';
                 }
             }
-        });
+        }
+
+        // Attach to parent doc and window using capture phase
+        if (!win.__aeroguard_listener_attached) {
+            win.__aeroguard_listener_attached = true;
+            doc.addEventListener('keydown', handleKeyDown, true);
+            win.addEventListener('keydown', handleKeyDown, true);
+            document.addEventListener('keydown', handleKeyDown, true);
+            window.addEventListener('keydown', handleKeyDown, true);
+        }
+        createModal();
     } catch (err) {
         console.warn("AeroGuard Hotkey Controller:", err);
     }
