@@ -1,0 +1,6 @@
+Metric,Baseline Model,Improved Model,Improvement,Better
+RMSE (cycles),63.83,34.66,45.7% lower error,Improved Model
+MAE (cycles),48.15,27.1,43.7% lower error,Improved Model
+R² Score,0.3743,0.8155,+0.4412 higher variance explained,Improved Model
+NASA Risk Penalty Score,19321064.94,106423.43,99.4% safer predictions,Improved Model
+Features Used,6.0,73.0,+67 engineered degradation signals,Improved Model
