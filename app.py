@@ -481,6 +481,19 @@ st.markdown(
         box-shadow: 0 0 10px rgba(56, 189, 248, 0.6) !important;
     }}
 
+    /* Keymap quick-access pill hover */
+    #aeroguard-keymap-trigger:hover,
+    .aeroguard-keymap-trigger:hover {{
+        background: rgba(56, 189, 248, 0.28) !important;
+        border-color: #38bdf8 !important;
+        box-shadow: 0 0 10px rgba(56, 189, 248, 0.5) !important;
+        transform: scale(1.05) !important;
+    }}
+    #aeroguard-keymap-trigger:active,
+    .aeroguard-keymap-trigger:active {{
+        transform: scale(0.95) !important;
+    }}
+
     /* Seamless hidden helper for keyboard listener — keeping iframe active */
     iframe[data-testid="stCustomComponentV1"] {{
         position: fixed !important;
@@ -1349,7 +1362,7 @@ with st.sidebar:
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
             <span style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1px;font-family:monospace;">// CONSOLE NAVIGATION</span>
-            <span style="font-size:9px;font-weight:700;color:#38bdf8;background:rgba(56,189,248,0.12);padding:1px 6px;border-radius:4px;border:1px solid rgba(56,189,248,0.3);font-family:monospace;cursor:pointer;" title="Click or press '?' for avionics flight keymap" onclick="if(window.parent.toggleAeroguardKeymap){window.parent.toggleAeroguardKeymap();}else if(window.toggleAeroguardKeymap){window.toggleAeroguardKeymap();}">[?] KEYMAP</span>
+            <span id="aeroguard-keymap-trigger" class="aeroguard-keymap-trigger" style="font-size:9px;font-weight:700;color:#38bdf8;background:rgba(56,189,248,0.12);padding:2px 7px;border-radius:4px;border:1px solid rgba(56,189,248,0.3);font-family:monospace;cursor:pointer;user-select:none;transition:all 0.2s ease;" title="Click or press '?' / 'H' for avionics flight keymap">[?] KEYMAP</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1641,6 +1654,16 @@ HOTKEY_CONTROLLER_HTML = """
             }
         }
 
+        function handleDocClick(e) {
+            const trigger = e.target.closest('#aeroguard-keymap-trigger, .aeroguard-keymap-trigger');
+            if (trigger) {
+                e.preventDefault();
+                e.stopPropagation();
+                win.toggleAeroguardKeymap();
+                return;
+            }
+        }
+
         // Always re-bind handler on parent doc/window
         if (win.__aeroguard_handler) {
             doc.removeEventListener('keydown', win.__aeroguard_handler, true);
@@ -1648,11 +1671,25 @@ HOTKEY_CONTROLLER_HTML = """
             document.removeEventListener('keydown', win.__aeroguard_handler, true);
             window.removeEventListener('keydown', win.__aeroguard_handler, true);
         }
+        if (win.__aeroguard_click_handler) {
+            doc.removeEventListener('click', win.__aeroguard_click_handler, true);
+            win.removeEventListener('click', win.__aeroguard_click_handler, true);
+            document.removeEventListener('click', win.__aeroguard_click_handler, true);
+            window.removeEventListener('click', win.__aeroguard_click_handler, true);
+        }
         win.__aeroguard_handler = handleKeyDown;
+        win.__aeroguard_click_handler = handleDocClick;
+
         doc.addEventListener('keydown', handleKeyDown, true);
         win.addEventListener('keydown', handleKeyDown, true);
         document.addEventListener('keydown', handleKeyDown, true);
         window.addEventListener('keydown', handleKeyDown, true);
+
+        doc.addEventListener('click', handleDocClick, true);
+        win.addEventListener('click', handleDocClick, true);
+        document.addEventListener('click', handleDocClick, true);
+        window.addEventListener('click', handleDocClick, true);
+
         createModal();
     } catch (err) {
         console.warn("AeroGuard Hotkey Controller:", err);
