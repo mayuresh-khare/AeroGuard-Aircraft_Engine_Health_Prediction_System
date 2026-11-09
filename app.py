@@ -245,6 +245,7 @@ st.markdown(
     [data-testid="stMainMenuPopover"]{{ display:    none    !important; }}
 
     /* ===== Sidebar collapsed toggle — styled as a dark pill button ===== */
+    [data-testid="stExpandSidebarButton"],
     [data-testid="stSidebarCollapsedControl"] {{
         visibility:    visible      !important;
         opacity:       1            !important;
@@ -256,9 +257,11 @@ st.markdown(
         transform:     translateY(-50%) !important;
         transition:    background .2s  !important;
     }}
+    [data-testid="stExpandSidebarButton"]:hover,
     [data-testid="stSidebarCollapsedControl"]:hover {{
         background: #1e3a5f !important;
     }}
+    [data-testid="stExpandSidebarButton"] svg,
     [data-testid="stSidebarCollapsedControl"] svg {{
         fill:   #e7ecf7 !important;
         stroke: #e7ecf7 !important;
@@ -1461,30 +1464,25 @@ HOTKEY_CONTROLLER_HTML = """
         }
 
         function toggleSidebar() {
-            const sidebar = doc.querySelector('section[data-testid="stSidebar"]');
-            const collapsedCtrl = doc.querySelector('[data-testid="stSidebarCollapsedControl"]');
-            
-            // Check if sidebar is currently closed / collapsed
-            const isClosed = Boolean(
-                (collapsedCtrl && (win.getComputedStyle(collapsedCtrl).display !== 'none' && win.getComputedStyle(collapsedCtrl).visibility !== 'hidden')) ||
-                (sidebar && sidebar.getAttribute('aria-expanded') === 'false')
-            );
+            // 1. Look for expand button (when sidebar is closed)
+            const expandBtn = doc.querySelector('[data-testid="stExpandSidebarButton"] button')
+                           || doc.querySelector('[data-testid="stExpandSidebarButton"]')
+                           || doc.querySelector('[data-testid="stSidebarCollapsedControl"] button')
+                           || doc.querySelector('[data-testid="stSidebarCollapsedControl"]');
 
-            if (isClosed) {
-                // Re-open sidebar
-                if (collapsedCtrl) {
-                    const btn = collapsedCtrl.querySelector('button') || collapsedCtrl;
-                    btn.click();
-                    collapsedCtrl.click();
-                }
-            } else {
-                // Close sidebar
-                const collapseBtn = doc.querySelector('[data-testid="stSidebarCollapseButton"] button')
-                                 || doc.querySelector('section[data-testid="stSidebar"] button[kind="header"]')
-                                 || doc.querySelector('section[data-testid="stSidebar"] button');
-                if (collapseBtn) {
-                    collapseBtn.click();
-                }
+            if (expandBtn) {
+                expandBtn.click();
+                return;
+            }
+
+            // 2. Look for collapse button (when sidebar is open)
+            const collapseBtn = doc.querySelector('[data-testid="stSidebarCollapseButton"] button')
+                             || doc.querySelector('[data-testid="stSidebarCollapseButton"]')
+                             || doc.querySelector('section[data-testid="stSidebar"] button[kind="header"]')
+                             || doc.querySelector('section[data-testid="stSidebar"] button');
+
+            if (collapseBtn) {
+                collapseBtn.click();
             }
         }
 
@@ -1589,7 +1587,7 @@ HOTKEY_CONTROLLER_HTML = """
             }
 
             // 5. Keymap Modal: '?' or '/' or 'h' / 'H'
-            if (key === '?' || key === '/' || code === 'Slash' || key.toLowerCase() === 'h') {
+            if (key === '?' || key === '/' || code === 'Slash' || code === 'KeyH' || key.toLowerCase() === 'h') {
                 e.preventDefault();
                 e.stopPropagation();
                 win.toggleAeroguardKeymap();
