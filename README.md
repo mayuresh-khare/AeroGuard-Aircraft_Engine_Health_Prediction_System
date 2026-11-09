@@ -1,7 +1,7 @@
 # AeroGuard ✈️
 ### Real-Time Aircraft Engine Intelligence & Predictive Maintenance System
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://aeroguard-aircraftenginehealthpredictionsystem-4xnmjqeeeeegzpvm.streamlit.app)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://aeroguard-aircraftenginehealthpredictionsystem-daymlhnceoegsjv.streamlit.app/)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)
 ![Scikit-Learn](https://img.shields.io/badge/scikit--learn-1.6%2B-orange?logo=scikit-learn)
 ![Dataset](https://img.shields.io/badge/NASA-C--MAPSS%20Turbofan-red)
@@ -9,7 +9,7 @@
 
 > **AeroGuard** is an aerospace-grade telemetry and predictive maintenance command center that monitors aircraft turbofan engine health, detects early-stage mechanical anomalies, predicts Remaining Useful Life (RUL) with high precision, and automates FAA/EASA-aligned maintenance work orders.
 
-🌐 **Live Dashboard**: [Launch AeroGuard on Streamlit Cloud](https://aeroguard-aircraftenginehealthpredictionsystem-4xnmjqeeeeegzpvm.streamlit.app)
+🌐 **Live Dashboard**: [Launch AeroGuard on Streamlit Cloud](https://aeroguard-aircraftenginehealthpredictionsystem-daymlhnceoegsjv.streamlit.app/)
 
 ---
 
