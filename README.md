@@ -30,6 +30,7 @@ Modern commercial aircraft turbofan engines operate under extreme thermal, aerod
    │  • Failure Risk Classifier   • Multi-Factor Engine Health Score (0-100)│
    │  • Turbofan Digital Twin     • Simulated Real-Time Sensor Stream       │
    │  • Condition Stress-Tester   • Automated Maintenance Decision SOPs     │
+   │  • Avionics Hotkey Nav (1-9) • Wide-Screen Telemetry Focus (Spacebar)  │
    └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -45,6 +46,23 @@ Modern commercial aircraft turbofan engines operate under extreme thermal, aerod
 | **4. 🩺 Engine Health Score** | Multi-factor prognostic health index ($0 - 100$) | Synthesizes RUL ($40\%$), sensor stability ($35\%$), and cycle fatigue ($25\%$) into **4 tiers**: Healthy, Monitor, Warning, Critical. |
 | **5. 📡 Real-Time Monitoring** | Continuous simulated flight stream with playback controls | Play, pause, step, and scrub cycles in real time with dynamic live RUL decay and automated event alarms. |
 | **6. 🛠️ Predictive Maintenance** | FAA/EASA-style dispatch clearance & decision engine | Automated maintenance directives, interactive **"What-If" stress-tester**, and fleet priority ranking. |
+
+---
+
+## 🎮 Avionics Hotkeys & Wide-Screen Mode
+
+AeroGuard integrates cockpit Multi-Function Display (MFD) style keyboard shortcuts designed for rapid telemetry triage and hands-on-throttle-and-stick (HOTAS) operation. Operators can collapse the sidebar to maximize screen real estate (**+25% wider telemetry viewport**) and navigate between modules without ever touching the mouse.
+
+| Shortcut Key | Function | Operational Action |
+| :---: | :--- | :--- |
+| <kbd>Spacebar</kbd> / <kbd>\\</kbd> | **Toggle Sidebar (Wide-Screen Mode)** | Instantly collapses the sidebar for maximum chart width or re-opens it. |
+| <kbd>1</kbd> – <kbd>9</kbd> | **Direct Module Jump** | Instantly switches to modules `[1]` to `[9]` (operates identically whether sidebar is open or closed). |
+| <kbd>→</kbd> or <kbd>]</kbd> | **Next Screen** | Cycles forward sequentially through telemetry modules. |
+| <kbd>←</kbd> or <kbd>[</kbd> | **Previous Screen** | Cycles backward sequentially through telemetry modules. |
+| <kbd>?</kbd> / <kbd>/</kbd> / <kbd>H</kbd> | **Flight Keymap HUD** | Displays an aerospace frosted-glass keymap overlay on screen. |
+| <kbd>Esc</kbd> | **Dismiss Overlay** | Closes the keymap modal. |
+
+> **Smart Input Guard**: Hotkeys are automatically suspended when the operator is typing inside text or number inputs to prevent unintended page switches.
 
 ---
 
@@ -93,6 +111,7 @@ Synthesizes RUL exhaustion, physical wear, and anomalous sensor density into an 
 * **Telemetry Visualization**: Plotly Graph Objects (Oscilloscope reticle layout, polar radar diagnostics)
 * **Digital Twin**: Custom vector SVG turbofan cross-section schematic with real-time station callouts
 * **Styling**: Mission Control Aerospace CSS (Dark-mode cockpit HUD, monospace telemetry instrumentation)
+* **Avionics Hotkey Engine**: Native client-side bridge for Spacebar wide-screen toggling, 1–9 direct module jumps, and modal HUD keymaps with Smart Input Guard
 
 ---
 
