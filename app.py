@@ -7,6 +7,7 @@ import datetime as dt
 import numpy as np
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 import plotly.graph_objects as go
 
 try:
@@ -375,6 +376,7 @@ st.markdown(
         width: 100% !important;
         display: flex !important;
         align-items: center !important;
+        justify-content: space-between !important;
         cursor: pointer !important;
         transition: all 0.2s ease !important;
     }}
@@ -395,6 +397,49 @@ st.markdown(
         color: #38bdf8 !important;
         font-weight: 800 !important;
         letter-spacing: 0.3px !important;
+    }}
+
+    /* Tactical Number Shortcut Badges [1]..[9] on right */
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label::after {{
+        font-family: 'Consolas', 'JetBrains Mono', monospace !important;
+        font-size: 10px !important;
+        font-weight: 800 !important;
+        color: #64748b !important;
+        background: #081226 !important;
+        border: 1px solid #1e3a5f !important;
+        border-radius: 4px !important;
+        padding: 2px 6px !important;
+        margin-left: auto !important;
+        letter-spacing: 0.5px !important;
+        box-shadow: inset 0 1px 2px rgba(0,0,0,0.4) !important;
+        transition: all 0.2s ease !important;
+    }}
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label:nth-of-type(1)::after {{ content: "[1]"; }}
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label:nth-of-type(2)::after {{ content: "[2]"; }}
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label:nth-of-type(3)::after {{ content: "[3]"; }}
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label:nth-of-type(4)::after {{ content: "[4]"; }}
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label:nth-of-type(5)::after {{ content: "[5]"; }}
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label:nth-of-type(6)::after {{ content: "[6]"; }}
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label:nth-of-type(7)::after {{ content: "[7]"; }}
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label:nth-of-type(8)::after {{ content: "[8]"; }}
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label:nth-of-type(9)::after {{ content: "[9]"; }}
+
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label:hover::after {{
+        color: #38bdf8 !important;
+        border-color: #38bdf8 !important;
+        box-shadow: 0 0 8px rgba(56, 189, 248, 0.4) !important;
+    }}
+    section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label:has(input:checked)::after {{
+        color: #070d18 !important;
+        background: #38bdf8 !important;
+        border-color: #38bdf8 !important;
+        font-weight: 900 !important;
+        box-shadow: 0 0 10px rgba(56, 189, 248, 0.6) !important;
+    }}
+
+    /* Seamless hidden helper for keyboard listener */
+    iframe[data-testid="stCustomComponentV1"] {{
+        display: none !important;
     }}
 
     /* ===== Smooth colour transitions on the whole app ===== */
@@ -1251,7 +1296,10 @@ with st.sidebar:
             </div>
         </div>
         </div>
-        <div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1px;margin-bottom:8px;font-family:monospace;">// CONSOLE NAVIGATION</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <span style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1px;font-family:monospace;">// CONSOLE NAVIGATION</span>
+            <span style="font-size:9px;font-weight:700;color:#38bdf8;background:rgba(56,189,248,0.12);padding:1px 6px;border-radius:4px;border:1px solid rgba(56,189,248,0.3);font-family:monospace;cursor:pointer;" title="Click or press '?' for avionics flight keymap" onclick="if(window.parent.toggleAeroguardKeymap){window.parent.toggleAeroguardKeymap();}else if(window.toggleAeroguardKeymap){window.toggleAeroguardKeymap();}">[?] KEYMAP</span>
+        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -1292,6 +1340,191 @@ with st.sidebar:
 # THEME STATE SYNC
 # --------------------------------------------------------------------------
 _is_dark = st.session_state.get("dark_mode", True)
+
+# --------------------------------------------------------------------------
+# AVIONICS FLIGHT KEYMAP & HOTKEY CONTROLLER (JS Bridge)
+# --------------------------------------------------------------------------
+HOTKEY_CONTROLLER_HTML = """
+<script>
+(function() {
+    try {
+        const win = window.parent || window;
+        const doc = win.document;
+
+        // Ensure keymap modal exists in parent document
+        if (!doc.getElementById('aeroguard-keymap-modal')) {
+            const modal = doc.createElement('div');
+            modal.id = 'aeroguard-keymap-modal';
+            modal.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999999;background:rgba(3,7,18,0.85);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);align-items:center;justify-content:center;';
+            modal.innerHTML = `
+                <div style="background:linear-gradient(145deg, #091326 0%, #0d1e3d 100%);border:1.5px solid rgba(56,189,248,0.4);box-shadow:0 0 35px rgba(56,189,248,0.25), 0 20px 40px rgba(0,0,0,0.8);border-radius:12px;width:90%;max-width:580px;padding:22px 26px;color:#f8fafc;font-family:'Consolas','JetBrains Mono',monospace;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(56,189,248,0.25);padding-bottom:12px;margin-bottom:16px;">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <span style="font-size:20px;">🛰️</span>
+                            <div>
+                                <div style="font-size:14px;font-weight:900;letter-spacing:1px;color:#38bdf8;">AEROGUARD // FLIGHT AVIONICS KEYMAP</div>
+                                <div style="font-size:10px;color:#94a3b8;">MIL-STD CONSOLE SHORTCUT MATRIX</div>
+                            </div>
+                        </div>
+                        <button id="close-aeroguard-keymap-btn" style="background:#0f1c38;border:1px solid #1e3a5f;color:#e2e8f0;padding:4px 10px;border-radius:6px;cursor:pointer;font-family:monospace;font-size:11px;">[ESC / ×]</button>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:11px;">
+                        <div>
+                            <div style="color:#38bdf8;font-weight:800;font-size:10px;letter-spacing:1px;margin-bottom:8px;border-bottom:1px solid #1e293b;padding-bottom:4px;">DIRECT MODULE JUMP</div>
+                            <div style="display:flex;flex-direction:column;gap:6px;">
+                                <div style="display:flex;justify-content:space-between;"><span>🏠 Dashboard</span><kbd style="background:#081226;border:1px solid #38bdf8;color:#38bdf8;padding:1px 6px;border-radius:3px;">1</kbd></div>
+                                <div style="display:flex;justify-content:space-between;"><span>📈 Engine Monitoring</span><kbd style="background:#081226;border:1px solid #38bdf8;color:#38bdf8;padding:1px 6px;border-radius:3px;">2</kbd></div>
+                                <div style="display:flex;justify-content:space-between;"><span>🗄️ Sensor Data</span><kbd style="background:#081226;border:1px solid #38bdf8;color:#38bdf8;padding:1px 6px;border-radius:3px;">3</kbd></div>
+                                <div style="display:flex;justify-content:space-between;"><span>🛠️ Predictive Maint.</span><kbd style="background:#081226;border:1px solid #38bdf8;color:#38bdf8;padding:1px 6px;border-radius:3px;">4</kbd></div>
+                                <div style="display:flex;justify-content:space-between;"><span>⚠️ Risk Detection</span><kbd style="background:#081226;border:1px solid #38bdf8;color:#38bdf8;padding:1px 6px;border-radius:3px;">5</kbd></div>
+                                <div style="display:flex;justify-content:space-between;"><span>🔍 Anomaly Detection</span><kbd style="background:#081226;border:1px solid #38bdf8;color:#38bdf8;padding:1px 6px;border-radius:3px;">6</kbd></div>
+                                <div style="display:flex;justify-content:space-between;"><span>🎯 RUL Improvement</span><kbd style="background:#081226;border:1px solid #38bdf8;color:#38bdf8;padding:1px 6px;border-radius:3px;">7</kbd></div>
+                                <div style="display:flex;justify-content:space-between;"><span>🩺 Health Score</span><kbd style="background:#081226;border:1px solid #38bdf8;color:#38bdf8;padding:1px 6px;border-radius:3px;">8</kbd></div>
+                                <div style="display:flex;justify-content:space-between;"><span>📡 Real-Time Monitor</span><kbd style="background:#081226;border:1px solid #38bdf8;color:#38bdf8;padding:1px 6px;border-radius:3px;">9</kbd></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div style="color:#10b981;font-weight:800;font-size:10px;letter-spacing:1px;margin-bottom:8px;border-bottom:1px solid #1e293b;padding-bottom:4px;">SYSTEM & DISPLAY CONTROLS</div>
+                            <div style="display:flex;flex-direction:column;gap:8px;">
+                                <div>
+                                    <div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>Next Screen</span><div><kbd style="background:#081226;border:1px solid #10b981;color:#10b981;padding:1px 5px;border-radius:3px;">→</kbd> or <kbd style="background:#081226;border:1px solid #10b981;color:#10b981;padding:1px 5px;border-radius:3px;">]</kbd></div></div>
+                                    <div style="font-size:9px;color:#94a3b8;">Cycle forward through modules</div>
+                                </div>
+                                <div>
+                                    <div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>Previous Screen</span><div><kbd style="background:#081226;border:1px solid #10b981;color:#10b981;padding:1px 5px;border-radius:3px;">←</kbd> or <kbd style="background:#081226;border:1px solid #10b981;color:#10b981;padding:1px 5px;border-radius:3px;">[</kbd></div></div>
+                                    <div style="font-size:9px;color:#94a3b8;">Cycle backward through modules</div>
+                                </div>
+                                <div>
+                                    <div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>Toggle Sidebar</span><div><kbd style="background:#081226;border:1px solid #f59e0b;color:#f59e0b;padding:1px 5px;border-radius:3px;">\\\\</kbd> or <kbd style="background:#081226;border:1px solid #f59e0b;color:#f59e0b;padding:1px 5px;border-radius:3px;">B</kbd></div></div>
+                                    <div style="font-size:9px;color:#94a3b8;">Expand / collapse wide screen</div>
+                                </div>
+                                <div>
+                                    <div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>Toggle Keymap</span><div><kbd style="background:#081226;border:1px solid #a855f7;color:#a855f7;padding:1px 5px;border-radius:3px;">?</kbd> or <kbd style="background:#081226;border:1px solid #a855f7;color:#a855f7;padding:1px 5px;border-radius:3px;">H</kbd></div></div>
+                                    <div style="font-size:9px;color:#94a3b8;">Show / hide this keymap</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="margin-top:16px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center;font-size:9px;color:#64748b;">
+                        <span>🛡️ SMART INPUT GUARD ACTIVE (DISABLED WHILE TYPING)</span>
+                        <span>PRESS [ESC] TO DISMISS</span>
+                    </div>
+                </div>
+            `;
+            doc.body.appendChild(modal);
+            modal.addEventListener('click', function(ev) {
+                if (ev.target === modal) modal.style.display = 'none';
+            });
+            const closeBtn = doc.getElementById('close-aeroguard-keymap-btn');
+            if (closeBtn) closeBtn.addEventListener('click', function() { modal.style.display = 'none'; });
+        }
+
+        // Global toggle function
+        win.toggleAeroguardKeymap = function() {
+            const modal = doc.getElementById('aeroguard-keymap-modal');
+            if (modal) {
+                modal.style.display = (modal.style.display === 'none' || modal.style.display === '') ? 'flex' : 'none';
+            }
+        };
+
+        // Attach keydown listener only once
+        if (win.__aeroguard_hotkeys_active) return;
+        win.__aeroguard_hotkeys_active = true;
+
+        function isInputActive() {
+            const el = doc.activeElement;
+            if (!el) return false;
+            const tag = el.tagName ? el.tagName.toLowerCase() : '';
+            if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+            if (el.isContentEditable) return true;
+            if (el.getAttribute('role') === 'textbox' || el.getAttribute('role') === 'combobox') return true;
+            return false;
+        }
+
+        function toggleSidebar() {
+            const collapsedBtn = doc.querySelector('[data-testid="stSidebarCollapsedControl"] button') 
+                              || doc.querySelector('[data-testid="stSidebarCollapsedControl"]');
+            if (collapsedBtn && win.getComputedStyle(collapsedBtn).display !== 'none' && collapsedBtn.offsetParent !== null) {
+                collapsedBtn.click();
+                return;
+            }
+            const collapseBtn = doc.querySelector('[data-testid="stSidebarCollapseButton"] button') 
+                             || doc.querySelector('section[data-testid="stSidebar"] button');
+            if (collapseBtn) {
+                collapseBtn.click();
+            }
+        }
+
+        function cycleNav(dir) {
+            const labels = Array.from(doc.querySelectorAll('section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label'));
+            if (!labels.length) return;
+            let activeIdx = labels.findIndex(lbl => lbl.querySelector('input:checked'));
+            if (activeIdx === -1) activeIdx = 0;
+            let nextIdx = activeIdx + dir;
+            if (nextIdx < 0) nextIdx = labels.length - 1;
+            if (nextIdx >= labels.length) nextIdx = 0;
+            labels[nextIdx].click();
+        }
+
+        doc.addEventListener('keydown', function(e) {
+            if (e.ctrlKey || e.altKey || e.metaKey) return;
+            if (isInputActive()) return;
+
+            const key = e.key;
+
+            // Direct Number Jump 1-9
+            if (key >= '1' && key <= '9') {
+                const idx = parseInt(key, 10) - 1;
+                const labels = doc.querySelectorAll('section[data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label');
+                if (labels && labels[idx]) {
+                    e.preventDefault();
+                    labels[idx].click();
+                }
+                return;
+            }
+
+            // Sequential Cycling: ArrowRight / ']' and ArrowLeft / '['
+            if (key === 'ArrowRight' || key === ']') {
+                e.preventDefault();
+                cycleNav(1);
+                return;
+            }
+            if (key === 'ArrowLeft' || key === '[') {
+                e.preventDefault();
+                cycleNav(-1);
+                return;
+            }
+
+            // Toggle Sidebar: '\\\\' or 'b' / 'B'
+            if (key === '\\\\' || key === 'b' || key === 'B') {
+                e.preventDefault();
+                toggleSidebar();
+                return;
+            }
+
+            // Keymap Modal: '?' or 'h' / 'H'
+            if (key === '?' || key === 'h' || key === 'H') {
+                e.preventDefault();
+                win.toggleAeroguardKeymap();
+                return;
+            }
+
+            // Close Modal on Escape
+            if (key === 'Escape') {
+                const modal = doc.getElementById('aeroguard-keymap-modal');
+                if (modal && modal.style.display !== 'none') {
+                    e.preventDefault();
+                    modal.style.display = 'none';
+                }
+            }
+        });
+    } catch (err) {
+        console.warn("AeroGuard Hotkey Controller:", err);
+    }
+})();
+</script>
+"""
+components.html(HOTKEY_CONTROLLER_HTML, height=0, width=0)
 
 # --------------------------------------------------------------------------
 # SHARED COMPUTATIONS (based on selected engine/dataset, used across all pages)
