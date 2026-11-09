@@ -2118,46 +2118,58 @@ elif page == "🎯 RUL Improvement":
     # -----------------------------------------------------------------------
     # 1. ENGINE PREDICTION VERDICT BANNER
     # -----------------------------------------------------------------------
+    _b_bg = "#1e293b" if _DM else "#f0fdf4"
+    _b_brd = "#3b82f6" if _DM else "#16a34a"
+    _st_col = "#94a3b8" if _DM else "#64748b"
+    _mt_col = "#60a5fa" if _DM else "#0f172a"
+    _ds_col = "#cbd5e1" if _DM else "#334155"
+
+    _c_bg = "#0f172a" if _DM else "#ffffff"
+    _c_brd = "#334155" if _DM else "#e2e8f0"
+    _c_lbl = "#94a3b8" if _DM else "#64748b"
+    _imp_sub = f"Error: {imp_err:.1f} cyc" if imp_err is not None else "73 Features"
+    _base_sub = f"Error: {base_err:.1f} cyc" if base_err is not None else "6 Features"
+
+    improved_card_html = (
+        f'<div style="background:{_c_bg};padding:12px 18px;border-radius:12px;border:1px solid {_c_brd};text-align:center;min-width:110px;">'
+        f'<div style="font-size:11px;color:{_c_lbl};font-weight:700;">IMPROVED MODEL</div>'
+        f'<div style="font-size:24px;font-weight:900;color:#2563eb;">{latest_imp_pred:,.0f} <span style="font-size:12px;">cyc</span></div>'
+        f'<div style="font-size:11px;color:#16a34a;font-weight:700;">{_imp_sub}</div>'
+        f'</div>'
+    )
+
+    baseline_card_html = (
+        f'<div style="background:{_c_bg};padding:12px 18px;border-radius:12px;border:1px solid {_c_brd};text-align:center;min-width:110px;">'
+        f'<div style="font-size:11px;color:{_c_lbl};font-weight:700;">BASELINE MODEL</div>'
+        f'<div style="font-size:24px;font-weight:900;color:#dc2626;">{latest_base_pred:,.0f} <span style="font-size:12px;">cyc</span></div>'
+        f'<div style="font-size:11px;color:#dc2626;font-weight:700;">{_base_sub}</div>'
+        f'</div>'
+    )
+
+    if latest_true is not None:
+        true_card_html = (
+            f'<div style="background:{_c_bg};padding:12px 18px;border-radius:12px;border:1px solid {_c_brd};text-align:center;min-width:110px;">'
+            f'<div style="font-size:11px;color:{_c_lbl};font-weight:700;">TRUE RUL</div>'
+            f'<div style="font-size:24px;font-weight:900;color:#16a34a;">{latest_true:,.0f} <span style="font-size:12px;">cyc</span></div>'
+            f'<div style="font-size:11px;color:#16a34a;font-weight:700;">Ground Truth</div>'
+            f'</div>'
+        )
+    else:
+        true_card_html = ""
+
     st.markdown(
-        f"""
-        <div style="
-            background: {'#1e293b' if _DM else '#f0fdf4'};
-            border: 2px solid {'#3b82f6' if _DM else '#16a34a'};
-            border-radius: 18px; padding: 24px 32px; margin-bottom: 22px;
-            display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px;
-        ">
-            <div style="min-width: 260px;">
-                <div style="font-size:12px;font-weight:700;color:{'#94a3b8' if _DM else '#64748b'};text-transform:uppercase;letter-spacing:.08em;">
-                    Engine #{int(engine_id):02d} &nbsp;·&nbsp; {fd_choice} &nbsp;·&nbsp; Cycle {cycle_now}
-                </div>
-                <div style="font-size:28px;font-weight:900;color:{'#60a5fa' if _DM else '#0f172a'};margin:4px 0 2px;">
-                    🎯 Improved RUL: {latest_imp_pred:,.0f} Cycles
-                </div>
-                <div style="font-size:13.5px;color:{'#cbd5e1' if _DM else '#334155'};">
-                    Feature-engineered Gradient Boosting · <b>45.7% lower prediction error</b> across full fleet
-                </div>
-            </div>
-            <div style="display:flex;gap:16px;align-items:center;">
-                <div style="background:{'#0f172a' if _DM else '#ffffff'};padding:12px 18px;border-radius:12px;border:1px solid {'#334155' if _DM else '#e2e8f0'};text-align:center;">
-                    <div style="font-size:11px;color:{'#94a3b8' if _DM else '#64748b'};font-weight:700;">IMPROVED MODEL</div>
-                    <div style="font-size:24px;font-weight:900;color:#2563eb;">{latest_imp_pred:,.0f} <span style="font-size:12px;">cyc</span></div>
-                    <div style="font-size:11px;color:#16a34a;font-weight:700;">{'Error: ' + f'{imp_err:.1f} cyc' if imp_err is not None else '73 Features'}</div>
-                </div>
-                <div style="background:{'#0f172a' if _DM else '#ffffff'};padding:12px 18px;border-radius:12px;border:1px solid {'#334155' if _DM else '#e2e8f0'};text-align:center;">
-                    <div style="font-size:11px;color:{'#94a3b8' if _DM else '#64748b'};font-weight:700;">BASELINE MODEL</div>
-                    <div style="font-size:24px;font-weight:900;color:#dc2626;">{latest_base_pred:,.0f} <span style="font-size:12px;">cyc</span></div>
-                    <div style="font-size:11px;color:#dc2626;font-weight:700;">{'Error: ' + f'{base_err:.1f} cyc' if base_err is not None else '6 Features'}</div>
-                </div>
-                {f'''
-                <div style="background:{'#0f172a' if _DM else '#ffffff'};padding:12px 18px;border-radius:12px;border:1px solid {'#334155' if _DM else '#e2e8f0'};text-align:center;">
-                    <div style="font-size:11px;color:{'#94a3b8' if _DM else '#64748b'};font-weight:700;">TRUE RUL</div>
-                    <div style="font-size:24px;font-weight:900;color:#16a34a;">{latest_true:,.0f} <span style="font-size:12px;">cyc</span></div>
-                    <div style="font-size:11px;color:#16a34a;font-weight:700;">Ground Truth</div>
-                </div>
-                ''' if latest_true is not None else ''}
-            </div>
-        </div>
-        """,
+        f"""<div style="background:{_b_bg};border:2px solid {_b_brd};border-radius:18px;padding:24px 32px;margin-bottom:22px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:20px;">
+<div style="min-width:260px;">
+<div style="font-size:12px;font-weight:700;color:{_st_col};text-transform:uppercase;letter-spacing:.08em;">Engine #{int(engine_id):02d} &nbsp;·&nbsp; {fd_choice} &nbsp;·&nbsp; Cycle {cycle_now}</div>
+<div style="font-size:28px;font-weight:900;color:{_mt_col};margin:4px 0 2px;">🎯 Improved RUL: {latest_imp_pred:,.0f} Cycles</div>
+<div style="font-size:13.5px;color:{_ds_col};">Feature-engineered Gradient Boosting · <b>45.7% lower prediction error</b> across full fleet</div>
+</div>
+<div style="display:flex;gap:16px;align-items:center;">
+{improved_card_html}
+{baseline_card_html}
+{true_card_html}
+</div>
+</div>""",
         unsafe_allow_html=True,
     )
 
