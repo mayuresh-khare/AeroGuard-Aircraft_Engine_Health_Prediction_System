@@ -20,7 +20,7 @@ TEXT_DARK = "#10182c"
 
 def styled_layout(**overrides):
     """Mission Control telemetry Plotly layout; dynamically switches between tactical dark / day theme."""
-    _dm   = st.session_state.get("dark_mode", False)
+    _dm   = st.session_state.get("dark_mode", True)
     _text = "#e2e8f0" if _dm else TEXT_DARK
     _pbg  = "#080e1a" if _dm else "white"
     _grid = "rgba(56, 189, 248, 0.12)" if _dm else "#e2e8f0"
@@ -38,7 +38,7 @@ def styled_layout(**overrides):
 
 def render_turbofan_schematic_svg(hpc_temp: float, lpc_temp: float, pressure: float, rpm: float, cycle: int, health_label: str, health_color: str) -> str:
     """Generates an authentic aerospace-grade SVG cross-section of a high-bypass turbofan engine with real-time station telemetry."""
-    _dm = st.session_state.get("dark_mode", False)
+    _dm = st.session_state.get("dark_mode", True)
     bg_c = "#070d18" if _dm else "#f8fafc"
     stroke_c = "#38bdf8" if _dm else "#0284c7"
     txt_c = "#f1f5f9" if _dm else "#0f172a"
@@ -164,7 +164,7 @@ st.set_page_config(
 # THEME STATE  (must come right after set_page_config)
 # --------------------------------------------------------------------------
 if "dark_mode" not in st.session_state:
-    st.session_state.dark_mode = False
+    st.session_state.dark_mode = True
 _DM = st.session_state.dark_mode
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1291,7 +1291,7 @@ with st.sidebar:
 # --------------------------------------------------------------------------
 # THEME STATE SYNC
 # --------------------------------------------------------------------------
-_is_dark = st.session_state.get("dark_mode", False)
+_is_dark = st.session_state.get("dark_mode", True)
 
 # --------------------------------------------------------------------------
 # SHARED COMPUTATIONS (based on selected engine/dataset, used across all pages)
@@ -1662,7 +1662,7 @@ elif page == "🗄️ Sensor Data":
 # ==========================================================================
 elif page in ["🛠️ Predictive Maintenance", "🔧 Maintenance"]:
 
-    _dm = st.session_state.get("dark_mode", False)
+    _dm = st.session_state.get("dark_mode", True)
     banner_txt = "#f8fafc" if _dm else "#0f172a"
     sub_box_bg = "#334155" if _dm else "#ffffff"
     sub_box_txt = "#cbd5e1" if _dm else "#475569"
@@ -2131,7 +2131,7 @@ elif page == "⚠️ Risk Detection":
             z_matrix.append(z.values)
             y_labels.append(SENSOR_LABELS.get(col, col))
         z_matrix = np.array(z_matrix)
-        _dm_heat = st.session_state.get("dark_mode", False)
+        _dm_heat = st.session_state.get("dark_mode", True)
         _heat_text = "#e2e8f0" if _dm_heat else TEXT_DARK
         _heat_bg   = "#1e293b" if _dm_heat else "white"
         heat_fig = go.Figure(go.Heatmap(
@@ -2650,7 +2650,7 @@ elif page == "🔍 Anomaly Detection":
             fill="toself",
             fillcolor="rgba(37,99,235,0.15)",
         ))
-        _dm_r = st.session_state.get("dark_mode", False)
+        _dm_r = st.session_state.get("dark_mode", True)
         _r_txt = "#e2e8f0" if _dm_r else TEXT_DARK
         _r_bg  = "#1e293b" if _dm_r else "white"
         radar2.update_layout(
@@ -2821,7 +2821,7 @@ elif page == "🔍 Anomaly Detection":
         heat_y_labels.append(SENSOR_LABELS.get(col_, col_))
     heat_z_matrix = np.array(heat_z_matrix)
 
-    _dm_h2 = st.session_state.get("dark_mode", False)
+    _dm_h2 = st.session_state.get("dark_mode", True)
     _h2_txt = "#e2e8f0" if _dm_h2 else TEXT_DARK
     _h2_bg  = "#1e293b" if _dm_h2 else "white"
 
@@ -3256,7 +3256,7 @@ elif page == "🩺 Engine Health Score":
     desc = health_info["description"]
 
     # Theme-adaptive variables
-    _dm = st.session_state.get("dark_mode", False)
+    _dm = st.session_state.get("dark_mode", True)
     banner_bg = "#1e293b" if _dm else tier_bg
     banner_border = tier_color
     banner_txt = "#f8fafc" if _dm else "#0f172a"
@@ -3423,7 +3423,7 @@ f"""<div style="background:{banner_bg};border:2px solid {banner_border};border-r
             marker=dict(size=7, color=tier_color),
             hovertemplate="Subsystem: %{theta}<br>Health Score: %{r:.1f} / 100<extra></extra>",
         ))
-        _dm = st.session_state.get("dark_mode", False)
+        _dm = st.session_state.get("dark_mode", True)
         _polar_bg = "#1e293b" if _dm else "#ffffff"
         _polar_line = "#334155" if _dm else "#e2e8f0"
         _polar_txt = "#cbd5e1" if _dm else "#334155"
@@ -3640,7 +3640,7 @@ elif page == "📡 Real-Time Monitoring":
     all_traj_scores = compute_health_trajectory(engine_df, all_imp_preds)
     all_cycles = engine_df["cycle"].values.astype(int) if "cycle" in engine_df.columns else np.arange(1, max_cycles + 1)
 
-    _dm = st.session_state.get("dark_mode", False)
+    _dm = st.session_state.get("dark_mode", True)
     banner_txt = "#f8fafc" if _dm else "#0f172a"
     sub_box_bg = "#334155" if _dm else "#ffffff"
     sub_box_txt = "#cbd5e1" if _dm else "#475569"
