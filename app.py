@@ -1988,51 +1988,58 @@ with st.sidebar:
     if "custom_fdr_sig" not in st.session_state:
         st.session_state.custom_fdr_sig = None
 
-    sb_uploaded = st.file_uploader(
-        "📤 Upload Custom FDR Log (.csv / .txt / .tsv)",
-        type=["csv", "txt", "tsv"],
-        key="sb_fdr_uploader",
-        help="Drop any NASA C-MAPSS formatted telemetry file to run live diagnostics on unseen engines.",
-    )
-    if sb_uploaded is not None:
-        up_sig = (sb_uploaded.name, sb_uploaded.size)
-        if st.session_state.custom_fdr_sig != up_sig:
-            parsed_df, parsed_meta = parse_uploaded_telemetry(sb_uploaded.getvalue(), sb_uploaded.name)
-            st.session_state.custom_fdr_sig = up_sig
-            if parsed_df is not None:
-                st.session_state.custom_fdr_df = parsed_df
-                st.session_state.custom_fdr_meta = parsed_meta
-                st.session_state.use_custom_fdr = True
-            else:
-                st.session_state.custom_fdr_meta = parsed_meta
+    # Visual order: Engine Unit Designation above Custom FDR Uploader
+    sb_engine_slot = st.container()
+    sb_upload_slot = st.container()
 
-    if st.session_state.get("custom_fdr_meta") and st.session_state["custom_fdr_meta"].get("error"):
-        st.error(st.session_state["custom_fdr_meta"]["error"])
+    with sb_upload_slot:
+        sb_uploaded = st.file_uploader(
+            "📤 Upload Custom FDR Log (.csv / .txt / .tsv)",
+            type=["csv", "txt", "tsv"],
+            key="sb_fdr_uploader",
+            help="Drop any NASA C-MAPSS formatted telemetry file to run live diagnostics on unseen engines.",
+        )
+        if sb_uploaded is not None:
+            up_sig = (sb_uploaded.name, sb_uploaded.size)
+            if st.session_state.custom_fdr_sig != up_sig:
+                parsed_df, parsed_meta = parse_uploaded_telemetry(sb_uploaded.getvalue(), sb_uploaded.name)
+                st.session_state.custom_fdr_sig = up_sig
+                if parsed_df is not None:
+                    st.session_state.custom_fdr_df = parsed_df
+                    st.session_state.custom_fdr_meta = parsed_meta
+                    st.session_state.use_custom_fdr = True
+                else:
+                    st.session_state.custom_fdr_meta = parsed_meta
+
+        if st.session_state.get("custom_fdr_meta") and st.session_state["custom_fdr_meta"].get("error"):
+            st.error(st.session_state["custom_fdr_meta"]["error"])
 
     if st.session_state.use_custom_fdr and st.session_state.custom_fdr_df is not None:
         cmeta = st.session_state.custom_fdr_meta
         df = st.session_state.custom_fdr_df
         fd_choice = f"CUSTOM ({cmeta['filename'][:15]})"
-        st.markdown(
-            f"""<div style="background:rgba(56,189,248,0.14);border:1px solid #38bdf8;border-radius:8px;padding:7px 10px;margin:4px 0 8px;font-size:11px;font-family:monospace;">
-            <b style="color:#38bdf8;">📤 CUSTOM FDR ACTIVE</b><br/>
-            {cmeta['filename']}<br/>
-            {cmeta['engines']} engine(s) · {cmeta['rows']:,} cycles
-            </div>""",
-            unsafe_allow_html=True,
-        )
-        if st.button("↩️ Revert to Bundled Fleet", use_container_width=True, key="sb_revert_fdr"):
-            st.session_state.use_custom_fdr = False
-            st.rerun()
+        with sb_upload_slot:
+            st.markdown(
+                f"""<div style="background:rgba(56,189,248,0.14);border:1px solid #38bdf8;border-radius:8px;padding:7px 10px;margin:4px 0 8px;font-size:11px;font-family:monospace;">
+                <b style="color:#38bdf8;">📤 CUSTOM FDR ACTIVE</b><br/>
+                {cmeta['filename']}<br/>
+                {cmeta['engines']} engine(s) · {cmeta['rows']:,} cycles
+                </div>""",
+                unsafe_allow_html=True,
+            )
+            if st.button("↩️ Revert to Bundled Fleet", use_container_width=True, key="sb_revert_fdr"):
+                st.session_state.use_custom_fdr = False
+                st.rerun()
     else:
         fd_choice = selected_fd
         df = load_dataset(fd_choice)
 
     unit_ids = sorted(df["unit"].unique().tolist()) if "unit" in df else [1]
-    st.markdown("**Engine Unit Designation**")
-    engine_id = st.selectbox(
-        "Engine #", unit_ids, format_func=lambda u: f"Turbofan Unit #{int(u):02d}", key="engine_id", label_visibility="collapsed"
-    )
+    with sb_engine_slot:
+        st.markdown("**Engine Unit Designation**")
+        engine_id = st.selectbox(
+            "Engine #", unit_ids, format_func=lambda u: f"Turbofan Unit #{int(u):02d}", key="engine_id", label_visibility="collapsed"
+        )
 
     st.markdown("<div style='border-top:1px solid #1e3a5f;margin:16px 0 10px 0;'></div>", unsafe_allow_html=True)
     st.markdown(
