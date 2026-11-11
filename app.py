@@ -1,4 +1,5 @@
 import os
+import io
 import glob
 import json
 import time
@@ -434,6 +435,20 @@ st.markdown(
         fill:   #e7ecf7 !important;
         stroke: #e7ecf7 !important;
     }}
+    /* ---- Sidebar File Uploader Dropzone ---- */
+    section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {{
+        background-color: #122344 !important;
+        border: 1.5px dashed #3b5ea6 !important;
+        border-radius: 8px !important;
+        padding: 10px !important;
+    }}
+    section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button,
+    section[data-testid="stSidebar"] .stButton > button {{
+        background-color: #1a2f54 !important;
+        border: 1px solid #38bdf8 !important;
+        color: #e7ecf7 !important;
+        border-radius: 7px !important;
+    }}
 
     /* ---- Dropdown list (rendered as portal OUTSIDE sidebar) ---- */
     [data-baseweb="popover"] {{ background-color: #16233f !important; }}
@@ -787,6 +802,148 @@ def load_dataset(fd_choice: str) -> pd.DataFrame:
             pass
 
     return generate_demo_data(fd_choice)
+
+
+def parse_uploaded_telemetry(raw_bytes: bytes, filename: str):
+    """Parses user-uploaded NASA C-MAPSS (.txt/.csv/.tsv) telemetry into standardized AeroGuard columns."""
+    meta = {
+        "filename": filename or "uploaded_telemetry.csv",
+        "format_detected": "Unknown",
+        "rows": 0,
+        "engines": 0,
+        "has_rul": False,
+        "engine_list": [],
+        "error": None,
+    }
+    if not raw_bytes:
+        meta["error"] = "Uploaded file is empty."
+        return None, meta
+
+    try:
+        text = raw_bytes.decode("utf-8", errors="replace").strip()
+        lines = [ln for ln in text.splitlines() if ln.strip()]
+        if not lines:
+            meta["error"] = "No telemetry rows found in uploaded file."
+            return None, meta
+
+        first_line = lines[0].strip()
+        has_header = any(ch.isalpha() for ch in first_line)
+
+        if has_header:
+            if "," in first_line:
+                sep = ","
+            elif "\t" in first_line:
+                sep = "\t"
+            elif ";" in first_line:
+                sep = ";"
+            else:
+                sep = r"\s+"
+            raw_df = pd.read_csv(io.StringIO("\n".join(lines)), sep=sep, engine="python").dropna(axis=1, how="all")
+            meta["format_detected"] = f"Header CSV ({'comma' if sep == ',' else 'delimited'})"
+
+            col_map = {}
+            rul_vals = None
+            used_cols = set()
+
+            for c in raw_df.columns:
+                cl = str(c).strip().lower()
+                if cl in ("unit", "engine", "engine_id", "unit_id", "eng_id"):
+                    col_map[c] = "unit"
+                    used_cols.add(c)
+                elif cl in ("cycle", "cycles", "time", "time_cycles"):
+                    col_map[c] = "cycle"
+                    used_cols.add(c)
+                elif cl in ("op1", "op_setting_1", "setting_1"):
+                    col_map[c] = "op1"
+                    used_cols.add(c)
+                elif cl in ("op2", "op_setting_2", "setting_2"):
+                    col_map[c] = "op2"
+                    used_cols.add(c)
+                elif cl in ("op3", "op_setting_3", "setting_3"):
+                    col_map[c] = "op3"
+                    used_cols.add(c)
+                elif cl in ("rul", "true_rul", "remaining_useful_life"):
+                    rul_vals = pd.to_numeric(raw_df[c], errors="coerce").values
+                    used_cols.add(c)
+
+            df_std = raw_df.rename(columns=col_map).copy()
+            used_std = set(col_map.values())
+
+            # Map remaining telemetry columns to sensor_1..sensor_21 if not already named sensor_*
+            explicit_sensors = {c for c in df_std.columns if str(c).startswith("sensor_")}
+            if not explicit_sensors:
+                remaining = [c for c in df_std.columns if c not in used_std and c not in used_cols and str(c).lower() not in ("rul", "true_rul")]
+                for idx, cname in enumerate(remaining[:21], start=1):
+                    df_std = df_std.rename(columns={cname: f"sensor_{idx}"})
+                meta["format_detected"] = "Descriptive Telemetry CSV"
+            if "cycle" not in df_std.columns:
+                meta["error"] = "Header CSV must include a cycle/time column (e.g. 'cycle' or 'time_cycles')."
+                return None, meta
+        else:
+            sep = "," if ("," in first_line and len(first_line.split(",")) >= 6) else r"[,\s;]+"
+            raw_df = pd.read_csv(io.StringIO("\n".join(lines)), sep=sep, header=None, engine="python").dropna(axis=1, how="all")
+            if raw_df.shape[1] < 6:
+                meta["error"] = (
+                    f"Expected at least 6 numeric telemetry columns (unit, cycle, op1–op3, sensors), found {raw_df.shape[1]}."
+                )
+                return None, meta
+            rul_vals = pd.to_numeric(raw_df.iloc[:, len(COLS)], errors="coerce").values if raw_df.shape[1] > len(COLS) else None
+            take_n = min(raw_df.shape[1], len(COLS))
+            df_std = raw_df.iloc[:, :take_n].copy()
+            df_std.columns = COLS[:take_n]
+            meta["format_detected"] = f"Raw C-MAPSS ({raw_df.shape[1]}-col)"
+
+        parsed_sensor_cols = [c for c in df_std.columns if str(c).startswith("sensor_")]
+        if not parsed_sensor_cols:
+            meta["error"] = "No sensor telemetry columns found in uploaded file."
+            return None, meta
+
+        if "unit" not in df_std.columns:
+            df_std["unit"] = 1
+        if "cycle" not in df_std.columns:
+            df_std["cycle"] = np.arange(1, len(df_std) + 1)
+
+        for col in parsed_sensor_cols:
+            df_std[col] = pd.to_numeric(df_std[col], errors="coerce")
+
+        if not df_std[parsed_sensor_cols].notna().any().any():
+            meta["error"] = "No valid numeric sensor measurements found in uploaded file."
+            return None, meta
+
+        for col in COLS:
+            if col not in df_std.columns:
+                df_std[col] = 0.0
+            df_std[col] = pd.to_numeric(df_std[col], errors="coerce")
+
+        if rul_vals is not None and len(rul_vals) == len(df_std):
+            df_std["RUL"] = rul_vals
+
+        df_std = df_std.dropna(subset=["unit", "cycle"]).copy()
+        if df_std.empty or not df_std[parsed_sensor_cols].notna().any().any():
+            meta["error"] = "No valid numeric rows remained after schema parsing."
+            return None, meta
+
+        # Fill any sporadic missing sensor cells cleanly
+        sensor_cols = [f"sensor_{i}" for i in range(1, 22)]
+        df_std[sensor_cols + ["op1", "op2", "op3"]] = df_std[sensor_cols + ["op1", "op2", "op3"]].fillna(0.0)
+        df_std["unit"] = df_std["unit"].astype(int)
+        df_std["cycle"] = df_std["cycle"].astype(int)
+        df_std = df_std.sort_values(["unit", "cycle"]).reset_index(drop=True)
+
+        keep_cols = list(COLS) + (["RUL"] if "RUL" in df_std.columns and not pd.isna(df_std["RUL"]).all() else [])
+        df_std = df_std[keep_cols]
+
+        units = sorted(df_std["unit"].unique().tolist())
+        meta.update({
+            "rows": int(len(df_std)),
+            "engines": int(len(units)),
+            "has_rul": "RUL" in df_std.columns,
+            "engine_list": [int(u) for u in units],
+        })
+        return df_std, meta
+    except Exception as exc:
+        meta["error"] = f"Parse error: {exc}"
+        return None, meta
 
 
 class PortableStandardScaler:
@@ -1818,11 +1975,59 @@ with st.sidebar:
 
     st.markdown("<div style='font-size:10px;font-weight:800;color:#64748b;letter-spacing:1px;margin:16px 0 8px 0;font-family:monospace;'>// TELEMETRY ACQUISITION</div>", unsafe_allow_html=True)
     st.markdown("**Dataset / Fleet Stream**")
-    fd_choice = st.selectbox(
+    selected_fd = st.selectbox(
         "Dataset", ["FD001", "FD002", "FD003", "FD004"], label_visibility="collapsed", key="fd_choice"
     )
 
-    df = load_dataset(fd_choice)
+    if "use_custom_fdr" not in st.session_state:
+        st.session_state.use_custom_fdr = False
+    if "custom_fdr_df" not in st.session_state:
+        st.session_state.custom_fdr_df = None
+    if "custom_fdr_meta" not in st.session_state:
+        st.session_state.custom_fdr_meta = None
+    if "custom_fdr_sig" not in st.session_state:
+        st.session_state.custom_fdr_sig = None
+
+    sb_uploaded = st.file_uploader(
+        "📤 Upload Custom FDR Log (.csv / .txt / .tsv)",
+        type=["csv", "txt", "tsv"],
+        key="sb_fdr_uploader",
+        help="Drop any NASA C-MAPSS formatted telemetry file to run live diagnostics on unseen engines.",
+    )
+    if sb_uploaded is not None:
+        up_sig = (sb_uploaded.name, sb_uploaded.size)
+        if st.session_state.custom_fdr_sig != up_sig:
+            parsed_df, parsed_meta = parse_uploaded_telemetry(sb_uploaded.getvalue(), sb_uploaded.name)
+            st.session_state.custom_fdr_sig = up_sig
+            if parsed_df is not None:
+                st.session_state.custom_fdr_df = parsed_df
+                st.session_state.custom_fdr_meta = parsed_meta
+                st.session_state.use_custom_fdr = True
+            else:
+                st.session_state.custom_fdr_meta = parsed_meta
+
+    if st.session_state.get("custom_fdr_meta") and st.session_state["custom_fdr_meta"].get("error"):
+        st.error(st.session_state["custom_fdr_meta"]["error"])
+
+    if st.session_state.use_custom_fdr and st.session_state.custom_fdr_df is not None:
+        cmeta = st.session_state.custom_fdr_meta
+        df = st.session_state.custom_fdr_df
+        fd_choice = f"CUSTOM ({cmeta['filename'][:15]})"
+        st.markdown(
+            f"""<div style="background:rgba(56,189,248,0.14);border:1px solid #38bdf8;border-radius:8px;padding:7px 10px;margin:4px 0 8px;font-size:11px;font-family:monospace;">
+            <b style="color:#38bdf8;">📤 CUSTOM FDR ACTIVE</b><br/>
+            {cmeta['filename']}<br/>
+            {cmeta['engines']} engine(s) · {cmeta['rows']:,} cycles
+            </div>""",
+            unsafe_allow_html=True,
+        )
+        if st.button("↩️ Revert to Bundled Fleet", use_container_width=True, key="sb_revert_fdr"):
+            st.session_state.use_custom_fdr = False
+            st.rerun()
+    else:
+        fd_choice = selected_fd
+        df = load_dataset(fd_choice)
+
     unit_ids = sorted(df["unit"].unique().tolist()) if "unit" in df else [1]
     st.markdown("**Engine Unit Designation**")
     engine_id = st.selectbox(
@@ -2500,6 +2705,55 @@ elif page == "📈 Engine Monitoring":
 # ==========================================================================
 elif page == "🗄️ Sensor Data":
     st.markdown(
+        """<div class="panel-card">
+        <div class="panel-title">📤 Custom FDR Log Ingestion (Unseen Telemetry Testing)</div>
+        <div class="panel-sub">Upload any NASA C-MAPSS formatted .txt, .csv, or .tsv file (raw 26-column space/comma separated or header CSV) to inspect unseen engines across all 9 AeroGuard modules.</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+    up_col1, up_col2 = st.columns([1.8, 1.0])
+    with up_col1:
+        page_uploaded = st.file_uploader(
+            "Upload unseen engine telemetry log",
+            type=["csv", "txt", "tsv"],
+            key="page_fdr_uploader",
+            label_visibility="collapsed",
+        )
+        if page_uploaded is not None:
+            pg_sig = ("page", page_uploaded.name, page_uploaded.size)
+            if st.session_state.get("custom_fdr_sig") != pg_sig:
+                parsed_df, parsed_meta = parse_uploaded_telemetry(page_uploaded.getvalue(), page_uploaded.name)
+                st.session_state.custom_fdr_sig = pg_sig
+                if parsed_df is not None:
+                    st.session_state.custom_fdr_df = parsed_df
+                    st.session_state.custom_fdr_meta = parsed_meta
+                    st.session_state.use_custom_fdr = True
+                    st.rerun()
+                else:
+                    st.error(parsed_meta.get("error", "Unable to parse uploaded telemetry."))
+    with up_col2:
+        sample_df = load_dataset("FD001").head(80)
+        st.download_button(
+            "📋 Download Sample C-MAPSS CSV",
+            data=sample_df.to_csv(index=False).encode("utf-8"),
+            file_name="sample_fdr_telemetry.csv",
+            mime="text/csv",
+            use_container_width=True,
+            key="dl_sample_fdr",
+        )
+        if st.session_state.get("use_custom_fdr") and st.session_state.get("custom_fdr_meta"):
+            if st.button("↩️ Revert to Bundled Fleet", use_container_width=True, key="pg_revert_fdr"):
+                st.session_state.use_custom_fdr = False
+                st.rerun()
+
+    if st.session_state.get("use_custom_fdr") and st.session_state.get("custom_fdr_meta"):
+        _cm = st.session_state["custom_fdr_meta"]
+        st.success(
+            f"Active Custom Stream: **{_cm['filename']}** · Format: `{_cm['format_detected']}` · "
+            f"**{_cm['engines']} engine(s)** · **{_cm['rows']:,} cycles** · Ground-Truth RUL: `{'Included' if _cm['has_rul'] else 'Unlabeled (Inference Only)'}`"
+        )
+
+    st.markdown(
         f"""<div class="panel-card">
         <div class="panel-title">🗄️ Raw Sensor Data</div>
         <div class="panel-sub">Engine #{int(engine_id):02d} · {fd_choice} · {len(engine_df)} rows</div>
@@ -3038,7 +3292,8 @@ elif page == "⚠️ Risk Detection":
             series = engine_df[col]          # use full history for stats
             mu  = series.mean()
             sig = series.std()
-            z   = ((window_df[col] - mu) / max(sig, 1e-9)).clip(-3, 3)
+            sig = 0.0 if pd.isna(sig) else float(sig)
+            z   = ((window_df[col] - mu) / max(sig, 1e-9)).fillna(0.0).clip(-3, 3)
             z_matrix.append(z.values)
             y_labels.append(SENSOR_LABELS.get(col, col))
         z_matrix = np.array(z_matrix)
@@ -3248,7 +3503,7 @@ elif page == "🔍 Anomaly Detection":
         roll_mean = series.rolling(window, min_periods=5).mean()
         roll_std  = series.rolling(window, min_periods=5).std().fillna(1e-9)
         z = (series - roll_mean) / roll_std.clip(lower=1e-9)
-        return z.clip(-4, 4)
+        return z.fillna(0.0).clip(-4, 4)
 
     def classify_sensor_anomaly(z: float) -> tuple:
         """Return (status, color, icon) based on z-score magnitude."""
