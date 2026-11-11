@@ -309,6 +309,10 @@ st.markdown(
 
     /* ===== App background ===== */
     .stApp {{ background-color: {_bg}; }}
+    [data-testid="stCaptionContainer"],
+    [data-testid="stCaptionContainer"] * {{
+        color: {'#94a3b8' if _DM else '#64748b'} !important;
+    }}
 
     /* ===== Sidebar base ===== */
     section[data-testid="stSidebar"] {{
@@ -2060,9 +2064,17 @@ if page == "🏠 Dashboard":
                 hovertemplate=f"{label}: %{{customdata:,.2f}} {unit_}<br>Cycle: %{{x}}<extra></extra>",
             ))
         fig.update_layout(**styled_layout(
-            height=380, margin=dict(l=10, r=10, t=10, b=10),
-            legend=dict(font=dict(color=TEXT_DARK), orientation="h",
+            height=380, margin=dict(l=14, r=14, t=14, b=14),
+            plot_bgcolor="#eef2f6",
+            paper_bgcolor="#e5ebf3",
+            font=dict(family="'Consolas', 'JetBrains Mono', 'Fira Code', monospace", color="#0f172a", size=11),
+            xaxis=dict(color="#1e293b", gridcolor="#cbd5e1", gridwidth=1, griddash="dot",
+                       title_font=dict(color="#0f172a", size=11.5)),
+            yaxis=dict(color="#1e293b", gridcolor="#cbd5e1", gridwidth=1, griddash="dot",
+                       zerolinecolor="#94a3b8", title_font=dict(color="#0f172a", size=11.5)),
+            legend=dict(font=dict(color="#0f172a", size=11), orientation="h",
                         yanchor="bottom", y=1.02, xanchor="right", x=1),
+            hoverlabel=dict(bgcolor="#ffffff", font=dict(color="#0f172a")),
             xaxis_title="Engine Cycle", yaxis_title="Normalized value (hover for real reading)"))
         st.plotly_chart(fig, use_container_width=True, key="dash_trend_chart")
         if flat_sensors:
