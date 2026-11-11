@@ -2217,9 +2217,15 @@ if page == "🏠 Dashboard":
 # ==========================================================================
 elif page == "📈 Engine Monitoring":
     sensor_options = [c for c in engine_df.columns if c.startswith("sensor_")]
+    _mon_lbl_col = "#9ca3af" if _DM else "#6b7280"
+    st.markdown(
+        f'<div style="color:{_mon_lbl_col};font-size:14px;font-weight:700;margin:2px 0 6px;">Choose a sensor to inspect</div>',
+        unsafe_allow_html=True,
+    )
     chosen_sensor = st.selectbox(
         "Choose a sensor to inspect",
         sensor_options,
+        label_visibility="collapsed",
         format_func=lambda c: f"{c} — {SENSOR_LABELS.get(c, c)}",
     )
     series = engine_df[chosen_sensor]
@@ -2254,9 +2260,14 @@ elif page == "📈 Engine Monitoring":
         <div class="panel-sub">Pick a few sensors to overlay (normalized 0–1 so scales line up).</div>
         </div>""", unsafe_allow_html=True)
     default_multi = [hpc_col, lpc_col, press_col, rpm_col]
+    st.markdown(
+        f'<div style="color:{_mon_lbl_col};font-size:14px;font-weight:700;margin:4px 0 6px;">Sensors to compare</div>',
+        unsafe_allow_html=True,
+    )
     multi_sensors = st.multiselect(
         "Sensors to compare", sensor_options,
         default=[s for s in default_multi if s in sensor_options],
+        label_visibility="collapsed",
         format_func=lambda c: f"{c} — {SENSOR_LABELS.get(c, c)}",
     )
     if multi_sensors:
