@@ -351,6 +351,24 @@ st.markdown(
     section.main [data-testid="stThumbValue"] {{
         color: {'#9ca3af' if _DM else '#6b7280'} !important;
     }}
+    [data-testid="stExpander"] details {{
+        background-color: #cbd5e1 !important;
+        border: 1px solid #94a3b8 !important;
+        border-radius: 10px !important;
+    }}
+    [data-testid="stExpander"] summary {{
+        background-color: #cbd5e1 !important;
+        border-radius: 10px !important;
+        color: #0f172a !important;
+        font-weight: 700 !important;
+    }}
+    [data-testid="stExpander"] summary:hover {{
+        background-color: #dbe3ed !important;
+    }}
+    [data-testid="stExpander"] summary * {{
+        color: #0f172a !important;
+        fill: #0f172a !important;
+    }}
 
     /* ===== Sidebar base ===== */
     section[data-testid="stSidebar"] {{
