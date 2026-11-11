@@ -861,6 +861,217 @@ def predict_rul_row(model, scaler, row: pd.Series):
     return float(preds[0]), used
 
 
+def _format_xai_metric_val(val: float) -> str:
+    """Formats sensor/engineered feature values cleanly across magnitudes."""
+    if not np.isfinite(val):
+        return "N/A"
+    av = abs(val)
+    if 0 < av < 1.0:
+        return f"{val:.4f}"
+    if av >= 100.0:
+        return f"{val:,.1f}"
+    return f"{val:.2f}"
+
+
+def format_xai_feature_label(feat_name: str) -> str:
+    """Maps an engineered model feature name to a concise aerospace label."""
+    special_map = {
+        "cycle": "Operating Cycle Count",
+        "cycle_ratio": "Lifespan Ratio (cycle/max)",
+        "op1": "Op Setting 1 (Altitude)",
+        "op2": "Op Setting 2 (Mach No.)",
+        "op3": "Op Setting 3 (Throttle TRA)",
+        "temp_spread": "Temp Spread (HPC − LPC)",
+        "turbine_temp_drop": "Turbine Temp Drop (LPT − HPC)",
+        "pressure_ratio": "HPC Pressure Ratio (P30 / Ps30)",
+        "core_speed_drift": "Core Speed Drift (Nc Corr − Phys)",
+        "coolant_bleed_sum": "Total Coolant Bleed (HPT + LPT)",
+    }
+    if feat_name in special_map:
+        return special_map[feat_name]
+    if feat_name in SENSOR_LABELS:
+        return SENSOR_LABELS[feat_name]
+    for suffix, tag in (
+        ("_roll5_mean", "5-Cyc Mean"),
+        ("_roll5_std", "5-Cyc Volatility"),
+        ("_delta", "Step Δ"),
+    ):
+        if feat_name.endswith(suffix):
+            base = feat_name[: -len(suffix)]
+            base_lbl = SENSOR_LABELS.get(base, base)
+            return f"{base_lbl} ({tag})"
+    return feat_name.replace("_", " ").title()
+
+
+def compute_local_rul_attribution(imp_model, imp_scaler, imp_feats, frame: pd.DataFrame, row_idx: int = -1):
+    """Computes exact additive local feature attributions (Saabas tree-path decomposition)
+    for the improved GradientBoostingRegressor, decomposing prediction = base_value + sum(contribs).
+    """
+    if imp_model is None or imp_scaler is None or not imp_feats or frame is None or frame.empty:
+        return None
+
+    try:
+        df_sorted = frame.copy().sort_values("cycle").reset_index(drop=True) if "cycle" in frame.columns else frame.reset_index(drop=True)
+        n_rows = len(df_sorted)
+        idx = n_rows - 1 if row_idx < 0 else min(max(int(row_idx), 0), n_rows - 1)
+
+        X = engineer_engine_features(df_sorted, imp_feats)
+        X_sc = imp_scaler.transform(X)
+        x_sc = X_sc[idx : idx + 1]
+        x_raw = X[idx]
+
+        raw_pred = float(imp_model.predict(x_sc)[0])
+        pred_rul = float(max(1.0, raw_pred))
+        cycle_val = int(df_sorted.loc[idx, "cycle"]) if "cycle" in df_sorted.columns else idx + 1
+
+        n_feats = len(imp_feats)
+        contribs = np.zeros(n_feats, dtype=float)
+
+        if hasattr(imp_model, "estimators_") and hasattr(imp_model, "learning_rate"):
+            lr = float(imp_model.learning_rate)
+            base_value = float(imp_model.init_.predict(x_sc)[0]) if hasattr(imp_model, "init_") else 0.0
+            for est in np.asarray(imp_model.estimators_).ravel():
+                tree = est.tree_
+                base_value += lr * float(tree.value[0, 0, 0])
+                node = 0
+                while tree.children_left[node] != tree.children_right[node]:
+                    feat_idx = int(tree.feature[node])
+                    thresh = float(tree.threshold[node])
+                    next_node = int(tree.children_left[node]) if x_sc[0, feat_idx] <= thresh else int(tree.children_right[node])
+                    contribs[feat_idx] += lr * (float(tree.value[next_node, 0, 0]) - float(tree.value[node, 0, 0]))
+                    node = next_node
+        else:
+            # Fallback single-feature scaled-mean perturbation
+            base_x = np.zeros_like(x_sc)
+            base_value = float(imp_model.predict(base_x)[0])
+            for j in range(n_feats):
+                pert = base_x.copy()
+                pert[0, j] = x_sc[0, j]
+                contribs[j] = float(imp_model.predict(pert)[0]) - base_value
+
+        recon_pred = base_value + float(contribs.sum())
+        recon_err = abs(recon_pred - raw_pred)
+
+        rows = []
+        for j, fn in enumerate(imp_feats):
+            c_val = float(contribs[j])
+            rows.append({
+                "feature": fn,
+                "label": format_xai_feature_label(fn),
+                "raw_value": float(x_raw[j]),
+                "raw_display": _format_xai_metric_val(float(x_raw[j])),
+                "contribution": c_val,
+                "abs_impact": abs(c_val),
+                "direction": "Degrading (−RUL)" if c_val < 0 else ("Stabilizing (+RUL)" if c_val > 0 else "Neutral"),
+            })
+
+        attr_df = pd.DataFrame(rows).sort_values("abs_impact", ascending=False).reset_index(drop=True)
+        top_degrading = attr_df[attr_df["contribution"] < -1e-6].sort_values("contribution", ascending=True).reset_index(drop=True)
+        top_stabilizing = attr_df[attr_df["contribution"] > 1e-6].sort_values("contribution", ascending=False).reset_index(drop=True)
+
+        return {
+            "engine_cycle": cycle_val,
+            "row_index": idx,
+            "n_cycles": n_rows,
+            "base_value": base_value,
+            "raw_prediction": raw_pred,
+            "predicted_rul": pred_rul,
+            "net_shift": float(contribs.sum()),
+            "recon_error": recon_err,
+            "df": attr_df,
+            "top_degrading": top_degrading,
+            "top_stabilizing": top_stabilizing,
+        }
+    except Exception:
+        return None
+
+
+def build_xai_waterfall_figure(xai_res: dict, top_n: int = 10, dark_mode: bool = True) -> go.Figure:
+    """Builds an interactive horizontal Plotly Waterfall decomposing fleet baseline -> predicted RUL."""
+    attr_df = xai_res["df"]
+    base_val = xai_res["base_value"]
+    raw_pred = xai_res["raw_prediction"]
+    cyc = xai_res["engine_cycle"]
+
+    shown = attr_df.head(max(3, int(top_n))).copy()
+    rest = attr_df.iloc[len(shown) :]
+    other_sum = float(rest["contribution"].sum()) if not rest.empty else 0.0
+
+    # Order active drivers cleanly by contribution ascending inside shown block so negative drivers pull left and positive pull right
+    shown = shown.sort_values("contribution", ascending=True).reset_index(drop=True)
+
+    y_labels = ["Fleet Baseline E[RUL]"]
+    x_vals = [base_val]
+    measures = ["absolute"]
+    text_vals = [f"{base_val:.1f} cyc"]
+    hover_texts = [f"<b>Fleet Baseline Prediction</b><br>Expected RUL: {base_val:.2f} cycles<extra></extra>"]
+
+    for _, row in shown.iterrows():
+        c = float(row["contribution"])
+        y_labels.append(row["label"])
+        x_vals.append(c)
+        measures.append("relative")
+        text_vals.append(f"{c:+.1f}")
+        hover_texts.append(
+            f"<b>{row['label']}</b><br>"
+            f"Observed Value: {row['raw_display']}<br>"
+            f"RUL Impact: <b>{c:+.2f} cycles</b><extra></extra>"
+        )
+
+    if not rest.empty and abs(other_sum) > 1e-4:
+        y_labels.append(f"Other {len(rest)} Features")
+        x_vals.append(other_sum)
+        measures.append("relative")
+        text_vals.append(f"{other_sum:+.1f}")
+        hover_texts.append(
+            f"<b>Remaining {len(rest)} Features</b><br>"
+            f"Aggregated Net Impact: <b>{other_sum:+.2f} cycles</b><extra></extra>"
+        )
+
+    final_tag = f"Predicted RUL (Cyc {cyc})"
+    y_labels.append(final_tag)
+    x_vals.append(0.0)
+    measures.append("total")
+    text_vals.append(f"{raw_pred:.1f} cyc")
+    hover_texts.append(f"<b>{final_tag}</b><br>Model Output: <b>{raw_pred:.2f} cycles</b><extra></extra>")
+
+    pos_col = "#10b981"
+    neg_col = "#ef4444"
+    tot_col = "#38bdf8" if dark_mode else "#2563eb"
+    conn_col = "rgba(148,163,184,0.45)" if dark_mode else "rgba(100,116,139,0.45)"
+    txt_col = "#e2e8f0" if dark_mode else "#0f172a"
+
+    fig = go.Figure(
+        go.Waterfall(
+            orientation="h",
+            measure=measures,
+            y=y_labels,
+            x=x_vals,
+            text=text_vals,
+            textposition="outside",
+            textfont=dict(size=11, color=txt_col, family="JetBrains Mono, Consolas, monospace"),
+            hovertemplate=hover_texts,
+            connector=dict(line=dict(color=conn_col, width=1.2, dash="dot")),
+            increasing=dict(marker=dict(color=pos_col, line=dict(color="#34d399", width=1))),
+            decreasing=dict(marker=dict(color=neg_col, line=dict(color="#f87171", width=1))),
+            totals=dict(marker=dict(color=tot_col, line=dict(color="#60a5fa", width=1.4))),
+        )
+    )
+
+    chart_h = max(390, 29 * len(y_labels) + 95)
+    fig.update_layout(
+        **styled_layout(
+            height=chart_h,
+            margin=dict(l=12, r=58, t=18, b=36),
+            xaxis_title="Remaining Useful Life Contribution (Cycles)",
+            yaxis_title="",
+            showlegend=False,
+        )
+    )
+    fig.update_yaxes(autorange="reversed", tickfont=dict(size=11.5))
+    return fig
+
+
 def ai_recommendation(rul_pred, health_label, hpc_change, risk_label, cycle_now):
     if rul_pred < 30:
         headline = "⚠️ Immediate inspection recommended"
@@ -2219,6 +2430,37 @@ f"""<div style="background:#f0fdf4;border-left:4px solid #16a34a;border-radius:8
 </div>""", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
+    # Compact XAI Root-Cause Attribution Snapshot (Why this RUL?)
+    maint_xai = compute_local_rul_attribution(imp_model, imp_scaler, imp_feats, engine_df, row_idx=-1)
+    if maint_xai is not None:
+        m_deg = maint_xai["top_degrading"].head(3)
+        m_stab = maint_xai["top_stabilizing"].head(2)
+        deg_chips = "".join(
+            f'<span style="display:inline-block;margin:3px 6px 3px 0;padding:4px 9px;border-radius:6px;'
+            f'background:rgba(239,68,68,0.13);border:1px solid rgba(239,68,68,0.35);font-size:12px;color:{banner_txt};">'
+            f'<b>{r["label"]}</b> <span style="color:#ef4444;font-family:monospace;font-weight:800;">{r["contribution"]:+.1f} cyc</span></span>'
+            for _, r in m_deg.iterrows()
+        ) or f'<span style="font-size:12px;color:{sub_box_txt};">None active</span>'
+        stab_chips = "".join(
+            f'<span style="display:inline-block;margin:3px 6px 3px 0;padding:4px 9px;border-radius:6px;'
+            f'background:rgba(16,185,129,0.13);border:1px solid rgba(16,185,129,0.35);font-size:12px;color:{banner_txt};">'
+            f'<b>{r["label"]}</b> <span style="color:#10b981;font-family:monospace;font-weight:800;">{r["contribution"]:+.1f} cyc</span></span>'
+            for _, r in m_stab.iterrows()
+        ) or f'<span style="font-size:12px;color:{sub_box_txt};">None active</span>'
+
+        _snap_brd = "#334155" if _dm else "#cbd5e1"
+        st.markdown(
+            f"""<div style="background:{sub_box_bg};border:1px solid {_snap_brd};border-left:4px solid #38bdf8;border-radius:10px;padding:13px 18px;margin-bottom:18px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+                <div style="font-weight:800;font-size:13.5px;color:#38bdf8;">🧠 XAI RUL Root-Cause Snapshot · Cycle {maint_xai['engine_cycle']} (Baseline {maint_xai['base_value']:.0f} → {maint_xai['predicted_rul']:.0f} cyc)</div>
+                <div style="font-size:11.5px;color:{sub_box_txt};">Open <b>[7] 🎯 RUL Improvement</b> for full interactive Waterfall chart</div>
+            </div>
+            <div style="font-size:12px;color:{sub_box_txt};margin-bottom:4px;"><b style="color:#ef4444;">🔻 Degrading Penalties:</b> {deg_chips}</div>
+            <div style="font-size:12px;color:{sub_box_txt};"><b style="color:#10b981;">🔺 Stabilizing Buffers:</b> {stab_chips}</div>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+
     # -----------------------------------------------------------------------
     # 4. INTERACTIVE "WHAT-IF" SCENARIO SIMULATOR & CONDITION STRESS-TESTER
     # -----------------------------------------------------------------------
@@ -3393,6 +3635,122 @@ elif page == "🎯 RUL Improvement":
 </div>""",
         unsafe_allow_html=True,
     )
+
+    # -----------------------------------------------------------------------
+    # 1B. EXPLAINABLE AI (XAI) — PER-ENGINE ROOT-CAUSE WATERFALL
+    # -----------------------------------------------------------------------
+    st.markdown(
+        f"""<div class="panel-card">
+        <div class="panel-title">🧠 Explainable AI (XAI) · Per-Engine Root-Cause Attribution</div>
+        <div class="panel-sub">Exact tree-path decomposition showing which specific sensors, rolling volatilities, and thermodynamic deltas increased or reduced predicted RUL for Engine #{int(engine_id):02d}.</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    if imp_model is not None and imp_scaler is not None and imp_feats is not None:
+        xc1, xc2 = st.columns([2.2, 1.0])
+        with xc1:
+            if len(eng_cycles) > 1:
+                sel_cyc = st.select_slider(
+                    "Inspect Operating Cycle (Scrub Timeline to See How Failure Drivers Evolve)",
+                    options=[int(c) for c in eng_cycles],
+                    value=int(eng_cycles[-1]),
+                    key=f"xai_cycle_slider_{fd_choice}_{int(engine_id)}",
+                )
+                sel_idx = int(np.searchsorted(eng_cycles, sel_cyc))
+            else:
+                sel_idx = 0
+                sel_cyc = int(eng_cycles[0])
+        with xc2:
+            xai_top_n = st.selectbox(
+                "Top Drivers Displayed",
+                options=[8, 10, 14, 18],
+                index=1,
+                key=f"xai_top_n_{fd_choice}_{int(engine_id)}",
+            )
+
+        xai_res = compute_local_rul_attribution(imp_model, imp_scaler, imp_feats, engine_df, row_idx=sel_idx)
+        if xai_res is not None:
+            col_wf, col_diag = st.columns([1.65, 1.0])
+            with col_wf:
+                fig_wf = build_xai_waterfall_figure(xai_res, top_n=xai_top_n, dark_mode=_DM)
+                st.plotly_chart(fig_wf, use_container_width=True, key=f"xai_wf_{fd_choice}_{int(engine_id)}_{sel_cyc}")
+                _clamp_note = " (clamped to ≥ 1.0 cyc floor in UI)" if xai_res["raw_prediction"] < 1.0 else ""
+                st.caption(
+                    f"Exact Additive Audit · Baseline `{xai_res['base_value']:.2f}` + Net Feature Shift "
+                    f"`{xai_res['net_shift']:+.2f}` = `{xai_res['raw_prediction']:.2f}` cyc{_clamp_note} "
+                    f"(reconstruction Δ = `{xai_res['recon_error']:.1e}`)"
+                )
+
+            with col_diag:
+                _card_bg = "#0f172a" if _DM else "#ffffff"
+                _card_brd = "#334155" if _DM else "#e2e8f0"
+                _txt_main = "#e2e8f0" if _DM else "#0f172a"
+                _txt_mut = "#94a3b8" if _DM else "#64748b"
+
+                # Top 3 Degrading Drivers
+                deg_df = xai_res["top_degrading"].head(3)
+                deg_rows_html = ""
+                if not deg_df.empty:
+                    for _, r in deg_df.iterrows():
+                        deg_rows_html += (
+                            f'<div style="display:flex;justify-content:space-between;align-items:center;'
+                            f'padding:7px 10px;margin-top:6px;border-radius:8px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);">'
+                            f'<div><div style="font-size:12.5px;font-weight:700;color:{_txt_main};">{r["label"]}</div>'
+                            f'<div style="font-size:11px;color:{_txt_mut};">Observed: {r["raw_display"]}</div></div>'
+                            f'<div style="font-family:monospace;font-size:13px;font-weight:800;color:#ef4444;">{r["contribution"]:+.1f} cyc</div>'
+                            f'</div>'
+                        )
+                else:
+                    deg_rows_html = f'<div style="font-size:12px;color:{_txt_mut};margin-top:6px;">No negative degradation penalties active at Cycle {sel_cyc}.</div>'
+
+                # Top 3 Stabilizing Factors
+                stab_df = xai_res["top_stabilizing"].head(3)
+                stab_rows_html = ""
+                if not stab_df.empty:
+                    for _, r in stab_df.iterrows():
+                        stab_rows_html += (
+                            f'<div style="display:flex;justify-content:space-between;align-items:center;'
+                            f'padding:7px 10px;margin-top:6px;border-radius:8px;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.3);">'
+                            f'<div><div style="font-size:12.5px;font-weight:700;color:{_txt_main};">{r["label"]}</div>'
+                            f'<div style="font-size:11px;color:{_txt_mut};">Observed: {r["raw_display"]}</div></div>'
+                            f'<div style="font-family:monospace;font-size:13px;font-weight:800;color:#10b981;">{r["contribution"]:+.1f} cyc</div>'
+                            f'</div>'
+                        )
+                else:
+                    stab_rows_html = f'<div style="font-size:12px;color:{_txt_mut};margin-top:6px;">No positive lifespan buffers active at Cycle {sel_cyc}.</div>'
+
+                # Plain-English Diagnostic Verdict
+                net_s = xai_res["net_shift"]
+                lead_deg = deg_df.iloc[0]["label"] if not deg_df.empty else "None"
+                lead_deg_val = f"{deg_df.iloc[0]['contribution']:+.1f} cyc" if not deg_df.empty else "0.0 cyc"
+                lead_stab = stab_df.iloc[0]["label"] if not stab_df.empty else "None"
+                lead_stab_val = f"{stab_df.iloc[0]['contribution']:+.1f} cyc" if not stab_df.empty else "0.0 cyc"
+                verdict_col = "#10b981" if net_s >= 0 else "#ef4444"
+                verdict_word = "above" if net_s >= 0 else "below"
+
+                st.markdown(
+                    f"""<div style="background:{_card_bg};border:1px solid {_card_brd};border-radius:12px;padding:14px 16px;">
+                    <div style="font-size:11.5px;font-weight:800;color:#38bdf8;text-transform:uppercase;letter-spacing:.06em;">Engine #{int(engine_id):02d} · Cycle {sel_cyc} Attribution</div>
+                    <div style="font-size:13px;color:{_txt_main};margin:6px 0 12px;line-height:1.45;">
+                        Prediction is <b style="color:{verdict_col};">{abs(net_s):.1f} cycles {verdict_word}</b> the fleet baseline ({xai_res['base_value']:.1f} cyc).
+                        Largest RUL penalty is <b>{lead_deg}</b> ({lead_deg_val}); strongest buffer is <b>{lead_stab}</b> ({lead_stab_val}).
+                    </div>
+                    <div style="font-size:11px;font-weight:800;color:#ef4444;text-transform:uppercase;letter-spacing:.05em;">🔻 Top Degrading Drivers (−RUL)</div>
+                    {deg_rows_html}
+                    <div style="font-size:11px;font-weight:800;color:#10b981;text-transform:uppercase;letter-spacing:.05em;margin-top:12px;">🔺 Top Stabilizing Signals (+RUL)</div>
+                    {stab_rows_html}
+                    </div>""",
+                    unsafe_allow_html=True,
+                )
+
+            with st.expander("🔍 Inspect Full Per-Feature Attribution Ledger (Top 25 Signals)", expanded=False):
+                ledger_df = xai_res["df"].head(25)[["label", "feature", "raw_display", "contribution", "direction"]].copy()
+                ledger_df.columns = ["Aerospace Signal", "Model Feature", "Observed Value", "RUL Impact (Cycles)", "Effect"]
+                ledger_df["RUL Impact (Cycles)"] = ledger_df["RUL Impact (Cycles)"].map(lambda v: f"{v:+.2f}")
+                st.dataframe(ledger_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("Improved Gradient Boosting model artifacts are not loaded; XAI tree-path attribution requires `improved_rul_model.pkl`.")
 
     # -----------------------------------------------------------------------
     # 2. BENCHMARK COMPARISON KPIS (Baseline vs Improved)
