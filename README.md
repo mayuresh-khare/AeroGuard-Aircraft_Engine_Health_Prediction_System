@@ -18,21 +18,42 @@
 Modern commercial aircraft turbofan engines operate under extreme thermal, aerodynamic, and mechanical stress. Unplanned engine downtime disrupts flight schedules and presents severe safety hazards. **AeroGuard** bridges the gap between raw flight data recording (FDR) telemetry and operational maintenance dispatching by combining **feature-engineered machine learning models** with an **aerospace mission control interface**.
 
 ```
-  [ Flight FDR Telemetry ] ──► [ 73 Engineered Features ] ──► [ Gradient Boosting Regressor ]
-                                                                        │
-  [ Multi-Channel Sensors ] ──► [ Rolling Z-Score Analytics ]          ▼
-                                                              [ Predicted RUL ]
-                                                                        │
-                                                                        ▼
-   ┌────────────────────────────────────────────────────────────────────────┐
-   │                  AeroGuard Mission Control Console                     │
-   ├────────────────────────────────────────────────────────────────────────┤
-   │  • Failure Risk Classifier   • Multi-Factor Engine Health Score (0-100)│
-   │  • Turbofan Digital Twin     • Simulated Real-Time Sensor Stream       │
-   │  • Condition Stress-Tester   • Automated Maintenance Decision SOPs     │
-   │  • Avionics Hotkey Nav (1-9) • Wide-Screen Telemetry Focus (Spacebar)  │
-   └────────────────────────────────────────────────────────────────────────┘
+  [ Flight FDR Telemetry / Custom Upload ] ──► [ 73 Engineered Features ] ──► [ Gradient Boosting + CQR Q10/Q90 ]
+                                                                                           │
+  [ Multi-Channel Sensors ] ─────────────────► [ Rolling Z-Score Analytics ]               ▼
+                                                                           [ Predicted RUL ± 80% Bounds + XAI ]
+                                                                                           │
+                                                                                           ▼
+   ┌────────────────────────────────────────────────────────────────────────────────────────┐
+   │                            AeroGuard Mission Control Console                           │
+   ├────────────────────────────────────────────────────────────────────────────────────────┤
+   │  • Failure Risk Classifier   • Multi-Factor Engine Health Score (0-100)                │
+   │  • Turbofan Digital Twin     • Simulated Real-Time Sensor Stream                       │
+   │  • XAI Waterfall Attribution • Custom Unseen FDR Ingestion (.csv/.txt/.tsv)            │
+   │  • Condition Stress-Tester   • Automated Maintenance Decision SOPs                     │
+   │  • Avionics Hotkey Nav (1-9) • Wide-Screen Telemetry Focus (Spacebar)                  │
+   └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## ✨ Recent Platform Upgrades
+
+### 1. 🧠 Explainable AI (XAI) — Per-Engine Root-Cause Attribution
+* **Exact Tree-Path Decomposition (Saabas)**: Decomposes every individual engine's predicted RUL into $\text{base\_value} + \sum \text{feature contributions}$ across all 73 engineered telemetry features with machine-precision reconciliation ($\text{error} < 10^{-12}$).
+* **Interactive Root-Cause Waterfall & Ledger**: Highlights top degrading (`−RUL`) and stabilizing (`+RUL`) thermodynamic signals alongside an inspectable 25-feature attribution ledger in **🎯 RUL Improvement**.
+
+### 2. 📐 Conformalized 80% Quantile RUL Uncertainty Bounds (`[Q10, Q90]`)
+* **Split Conformalized Quantile Regression (CQR)**: Trains dual quantile regressors (`alpha = 0.10` / `0.90`) calibrated with a CQR safety margin (`+0.0208` cycles) to deliver guaranteed **`80%` prediction intervals** (`79.93%` empirical test coverage, `109.66` cycles mean interval width).
+* **End-to-End Uncertainty Awareness**: Enforces monotonic non-crossing intervals (`Q10 <= Point <= Q90`) rendered as shaded confidence ribbons across **Dashboard**, **RUL Improvement**, **Real-Time Monitoring**, and **Predictive Maintenance**.
+
+### 3. 📤 Custom FDR Telemetry Uploader (Unseen Data Ingestion)
+* **Universal NASA C-MAPSS Parser**: Accepts custom `.csv`, `.txt`, and `.tsv` flight logs in raw headerless space/comma format (`>= 6` columns, optional `RUL`), descriptive header CSVs, or AeroGuard-exported CSVs, with strict schema validation and `< 5`-cycle `NaN` protection across anomaly heatmaps and rolling Z-scores.
+* **Live Switch & Revert Workflow**: Accessible both from the **Sidebar** (positioned directly below **Engine Unit Designation**) and **🗄️ Sensor Data** (including a downloadable sample CSV template, `data/sample_unseen_fdr_test.csv` with unseen engines `#101` & `#204`, and a one-click **Revert to Bundled Fleet** button).
+
+### 4. 📦 Version-Independent Portable NumPy Bundles (`.npz`) & Cockpit UX Polish
+* **Pure-NumPy Tree Inference**: Serializes ensemble scalers and decision trees into lightweight `.npz` artifacts (`16.9–35.3 KB`) loaded without `scikit-learn`/`numpy` pickle ABI coupling, ensuring seamless Streamlit Cloud execution for RUL predictions, `Q10`/`Q90` intervals, and XAI attribution.
+* **High-Contrast Telemetry Canvas & Avionics HUD**: Soft whitish-grey chart canvases (`#eef2f6` / `#e5ebf3`) with crisp dark-slate typography and deep-merged legible legends, slate-grey widget/expander labels, an unclipped sidebar drawer toggle, and a directly clickable `[?] KEYMAP` HUD pill.
 
 ---
 
@@ -40,12 +61,15 @@ Modern commercial aircraft turbofan engines operate under extreme thermal, aerod
 
 | Module | Core Capability | Operational Output |
 | :--- | :--- | :--- |
-| **1. ⚠️ Risk Detection** | ML classification across operating cycle envelopes | Classifies engine condition into **Normal**, **Warning**, and **Critical** failure risk tiers. |
-| **2. 🔍 Anomaly Detection** | Dynamic rolling $Z$-score statistical outlier detection | Flags sensor flutter, thermal creep, and pressure divergence across 21 telemetry channels. |
-| **3. 🎯 RUL Improvement** | 73 domain-engineered features with Gradient Boosting | Predicts exact operating cycles remaining before failure (**45.7% lower RMSE** than baseline). |
-| **4. 🩺 Engine Health Score** | Multi-factor prognostic health index ($0 - 100$) | Synthesizes RUL ($40\%$), sensor stability ($35\%$), and cycle fatigue ($25\%$) into **4 tiers**: Healthy, Monitor, Warning, Critical. |
-| **5. 📡 Real-Time Monitoring** | Continuous simulated flight stream with playback controls | Play, pause, step, and scrub cycles in real time with dynamic live RUL decay and automated event alarms. |
-| **6. 🛠️ Predictive Maintenance** | FAA/EASA-style dispatch clearance & decision engine | Automated maintenance directives, interactive **"What-If" stress-tester**, and fleet priority ranking. |
+| **1. 🏠 Dashboard & Fleet Overview** | Fleet-wide RUL, Health Index, and CQR uncertainty triage | Highlights at-risk engines, live `Q10–Q90` envelopes, and sensor trends for selected or uploaded units. |
+| **2. 📈 Engine Monitoring** | Single-engine sensor drill-down & multi-channel comparison | Inspects raw vs. normalized curves across individual or comparative telemetry channels. |
+| **3. 🗄️ Sensor Data & Custom FDR** | Raw telemetry inspection, CSV export & unseen FDR upload | Parses custom `.csv`/`.txt`/`.tsv` flight logs and previews standardized 26-column C-MAPSS channels. |
+| **4. 🛠️ Predictive Maintenance** | FAA/EASA-style dispatch clearance & decision engine | Automated maintenance directives, interactive **"What-If" stress-tester**, and fleet priority ranking. |
+| **5. ⚠️ Risk Detection** | ML classification & multi-sensor baseline heatmap | Classifies engine condition into **Normal**, **Warning**, and **Critical** failure risk tiers. |
+| **6. 🔍 Anomaly Detection** | Dynamic rolling $Z$-score statistical outlier detection | Flags sensor flutter, thermal creep, and pressure divergence across 21 telemetry channels (`NaN`-safe on short logs). |
+| **7. 🎯 RUL Improvement & XAI** | 73-feature GBR, `Q10–Q90` CQR intervals & XAI waterfall | Predicts exact operating cycles remaining (**45.7% lower RMSE** than baseline) with per-engine root-cause attribution. |
+| **8. 🩺 Engine Health Score** | Multi-factor prognostic health index ($0 - 100$) | Synthesizes RUL ($40\%$), sensor stability ($35\%$), and cycle fatigue ($25\%$) into **4 tiers**: Healthy, Monitor, Warning, Critical. |
+| **9. 📡 Real-Time Monitoring** | Continuous simulated flight stream with playback controls | Play, pause, step, and scrub cycles in real time with dynamic live RUL decay, CQR bounds, and automated alarms. |
 
 ---
 
@@ -107,11 +131,11 @@ Synthesizes RUL exhaustion, physical wear, and anomalous sensor density into an 
 ## 🛠️ Technology Stack
 
 * **Core Platform**: Python 3.10+, Streamlit
-* **Machine Learning**: Scikit-learn (GradientBoostingRegressor, StandardScaler), NumPy, Pandas
-* **Telemetry Visualization**: Plotly Graph Objects (Oscilloscope reticle layout, polar radar diagnostics)
+* **Machine Learning & Uncertainty**: Scikit-learn (`GradientBoostingRegressor` point + Q10/Q90 quantile ensembles, Split Conformalized Quantile Regression), Portable Pure-NumPy Tree Bundles (`.npz`), Saabas Tree-Path XAI Attribution, NumPy, Pandas
+* **Telemetry Visualization**: Plotly Graph Objects (Soft whitish-grey high-contrast canvas, waterfall XAI charts, CQR confidence envelopes, polar radar diagnostics)
 * **Digital Twin**: Custom vector SVG turbofan cross-section schematic with real-time station callouts
-* **Styling**: Mission Control Aerospace CSS (Dark-mode cockpit HUD, monospace telemetry instrumentation)
-* **Avionics Hotkey Engine**: Native client-side bridge for Spacebar wide-screen toggling, 1–9 direct module jumps, and modal HUD keymaps with Smart Input Guard
+* **Styling**: Mission Control Aerospace CSS (Dark-mode cockpit HUD contrasted with high-legibility telemetry panels and monospace instrumentation)
+* **Avionics Hotkey Engine**: Native client-side bridge for Spacebar wide-screen toggling, 1–9 direct module jumps, clickable `[?] KEYMAP` HUD pill, and Smart Input Guard
 
 ---
 
@@ -119,19 +143,27 @@ Synthesizes RUL exhaustion, physical wear, and anomalous sensor density into an 
 
 ```text
 AeroGuard/
-├── app.py                         # Complete Mission Control Dashboard & Telemetry Server
-├── improved_rul_model.pkl         # Trained Gradient Boosting Prognostic Engine (R² = 0.816)
-├── improved_rul_scaler.pkl        # Robust Feature Normalization Scaler
-├── improved_model_features.json   # 73-Feature Schema Definitions
-├── model_comparison_metrics.csv   # Head-to-Head Benchmark Validation Data
-├── feature_importances.csv        # Top Thermodynamic Feature Rankings
-├── requirements.txt               # Production Python Dependencies
-├── README.md                      # Executive Project Documentation
-└── data/                          # NASA C-MAPSS Turbofan Engine Datasets
-    ├── FD001.txt                  # Sea Level, Single Failure Mode (HPC Degradation)
-    ├── FD002.txt                  # 6 Flight Conditions, Single Failure Mode
-    ├── FD003.txt                  # Sea Level, Two Failure Modes (HPC + Fan)
-    └── FD004.txt                  # 6 Flight Conditions, Two Failure Modes
+├── app.py                            # Complete Mission Control Dashboard & Telemetry Server
+├── train_improved_model.py           # 73-Feature Gradient Boosting Training Pipeline
+├── train_quantile_models.py          # CQR Q10/Q90 Quantile Regressor & Portable .npz Exporter
+├── improved_rul_portable.npz         # Version-Independent Portable Improved GBR Bundle
+├── improved_rul_q10_portable.npz     # Portable Q10 Lower Bound Quantile Bundle
+├── improved_rul_q90_portable.npz     # Portable Q90 Upper Bound Quantile Bundle
+├── baseline_rul_portable.npz         # Portable Baseline GBR Bundle
+├── improved_rul_quantiles_meta.json  # Conformal Calibration & Coverage Metadata (79.93%)
+├── improved_rul_model.pkl            # Local Scikit-learn Improved Model (R² = 0.816)
+├── improved_rul_scaler.pkl           # Feature Normalization Scaler
+├── improved_model_features.json      # 73-Feature Schema Definitions
+├── model_comparison_metrics.csv      # Head-to-Head Benchmark Validation Data
+├── feature_importances.csv           # Top Thermodynamic Feature Rankings
+├── requirements.txt                  # Production Python Dependencies
+├── README.md                         # Executive Project Documentation
+└── data/                             # NASA C-MAPSS Datasets & Custom FDR Test Sample
+    ├── test_FD001_descriptive.csv    # Sea Level, Single Failure Mode (HPC Degradation)
+    ├── test_FD002_descriptive.csv    # 6 Flight Conditions, Single Failure Mode
+    ├── test_FD003_descriptive.csv    # Sea Level, Two Failure Modes (HPC + Fan)
+    ├── test_FD004_descriptive.csv    # 6 Flight Conditions, Two Failure Modes
+    └── sample_unseen_fdr_test.csv    # Unseen 2-Engine Custom FDR Upload Sample (#101 & #204)
 ```
 
 ---
