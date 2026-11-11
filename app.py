@@ -20,20 +20,41 @@ TEXT_DARK = "#10182c"
 
 
 def styled_layout(**overrides):
-    """Mission Control telemetry Plotly layout; dynamically switches between tactical dark / day theme."""
-    _dm   = st.session_state.get("dark_mode", True)
-    _text = "#e2e8f0" if _dm else TEXT_DARK
-    _pbg  = "#080e1a" if _dm else "white"
-    _grid = "rgba(56, 189, 248, 0.12)" if _dm else "#e2e8f0"
+    """Mission Control telemetry Plotly layout using a crisp soft whitish-grey canvas with deep-merged overrides."""
+    _text = "#0f172a"
+    _axis_text = "#1e293b"
+    _pbg = "#eef2f6"
+    _paper_bg = "#e5ebf3"
+    _grid = "#cbd5e1"
+    _axis_base = dict(
+        color=_axis_text,
+        gridcolor=_grid,
+        gridwidth=1,
+        griddash="dot",
+        zerolinecolor="#94a3b8",
+        tickfont=dict(color=_axis_text),
+        title_font=dict(color=_text, size=11.5),
+    )
     layout = {
-        "plot_bgcolor":  _pbg,
-        "paper_bgcolor": _pbg,
-        "font":   dict(family="'Consolas', 'JetBrains Mono', 'Fira Code', monospace", color=_text, size=11),
-        "xaxis":  dict(color=_text, gridcolor=_grid, gridwidth=1, griddash="dot", title_font=dict(color=_text, size=11.5)),
-        "yaxis":  dict(color=_text, gridcolor=_grid, gridwidth=1, griddash="dot", title_font=dict(color=_text, size=11.5)),
-        "legend": dict(font=dict(color=_text)),
+        "plot_bgcolor": _pbg,
+        "paper_bgcolor": _paper_bg,
+        "font": dict(family="'Consolas', 'JetBrains Mono', 'Fira Code', monospace", color=_text, size=11),
+        "xaxis": dict(_axis_base),
+        "yaxis": dict(_axis_base),
+        "legend": dict(font=dict(color=_text, size=11)),
+        "hoverlabel": dict(bgcolor="#ffffff", bordercolor="#cbd5e1", font=dict(color=_text)),
     }
-    layout.update(overrides)
+    for k, v in overrides.items():
+        if isinstance(v, dict) and isinstance(layout.get(k), dict):
+            merged = dict(layout[k])
+            merged.update(v)
+            layout[k] = merged
+        elif k in ("yaxis2", "yaxis3") and isinstance(v, dict):
+            merged = dict(_axis_base)
+            merged.update(v)
+            layout[k] = merged
+        else:
+            layout[k] = v
     return layout
 
 
@@ -1041,9 +1062,9 @@ def build_xai_waterfall_figure(xai_res: dict, top_n: int = 10, dark_mode: bool =
 
     pos_col = "#10b981"
     neg_col = "#ef4444"
-    tot_col = "#38bdf8" if dark_mode else "#2563eb"
-    conn_col = "rgba(148,163,184,0.45)" if dark_mode else "rgba(100,116,139,0.45)"
-    txt_col = "#e2e8f0" if dark_mode else "#0f172a"
+    tot_col = "#2563eb"
+    conn_col = "rgba(100,116,139,0.5)"
+    txt_col = "#0f172a"
 
     fig = go.Figure(
         go.Waterfall(
@@ -2065,16 +2086,7 @@ if page == "🏠 Dashboard":
             ))
         fig.update_layout(**styled_layout(
             height=380, margin=dict(l=14, r=14, t=14, b=14),
-            plot_bgcolor="#eef2f6",
-            paper_bgcolor="#e5ebf3",
-            font=dict(family="'Consolas', 'JetBrains Mono', 'Fira Code', monospace", color="#0f172a", size=11),
-            xaxis=dict(color="#1e293b", gridcolor="#cbd5e1", gridwidth=1, griddash="dot",
-                       title_font=dict(color="#0f172a", size=11.5)),
-            yaxis=dict(color="#1e293b", gridcolor="#cbd5e1", gridwidth=1, griddash="dot",
-                       zerolinecolor="#94a3b8", title_font=dict(color="#0f172a", size=11.5)),
-            legend=dict(font=dict(color="#0f172a", size=11), orientation="h",
-                        yanchor="bottom", y=1.02, xanchor="right", x=1),
-            hoverlabel=dict(bgcolor="#ffffff", font=dict(color="#0f172a")),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             xaxis_title="Engine Cycle", yaxis_title="Normalized value (hover for real reading)"))
         st.plotly_chart(fig, use_container_width=True, key="dash_trend_chart")
         if flat_sensors:
@@ -2129,7 +2141,7 @@ if page == "🏠 Dashboard":
                    "bar": {"color": health_color}, "bgcolor": "#eef1f8"},
             domain={"x": [0, 1], "y": [0, 1]}))
         gauge.update_layout(height=230, margin=dict(l=10, r=10, t=30, b=0),
-                             paper_bgcolor="white", font=dict(color=TEXT_DARK))
+                             paper_bgcolor="#e5ebf3", font=dict(color=TEXT_DARK))
         st.markdown('<div class="panel-card"><div class="panel-title">❤️ Engine Health Status</div></div>', unsafe_allow_html=True)
         st.plotly_chart(gauge, use_container_width=True, key="dash_gauge_chart")
         st.markdown(
@@ -2170,10 +2182,10 @@ if page == "🏠 Dashboard":
         radar.add_trace(go.Scatterpolar(r=current_vals + [current_vals[0]], theta=radar_labels + [radar_labels[0]],
                                          name="Current", line=dict(color="#2563eb")))
         radar.update_layout(height=300, margin=dict(l=20, r=20, t=10, b=10),
-                             paper_bgcolor="white", font=dict(color=TEXT_DARK),
-                             polar=dict(bgcolor="white",
+                             paper_bgcolor="#e5ebf3", font=dict(color=TEXT_DARK),
+                             polar=dict(bgcolor="#eef2f6",
                                         radialaxis=dict(visible=True, range=[0, 100], color=TEXT_DARK,
-                                                         gridcolor="#e5e9f2"),
+                                                         gridcolor="#cbd5e1"),
                                         angularaxis=dict(color=TEXT_DARK)),
                              showlegend=True, legend=dict(font=dict(color=TEXT_DARK), orientation="h", y=-0.1))
         st.plotly_chart(radar, use_container_width=True, key="dash_radar_chart")
@@ -2256,8 +2268,7 @@ elif page == "📈 Engine Monitoring":
         fig2.update_layout(**styled_layout(
             height=340, margin=dict(l=10, r=10, t=10, b=10),
             xaxis_title="Engine Cycle", yaxis_title="Normalized value",
-            legend=dict(font=dict(color=TEXT_DARK), orientation="h",
-                        yanchor="bottom", y=1.02, xanchor="right", x=1)))
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)))
         st.plotly_chart(fig2, use_container_width=True, key="mon_multi_sensor_chart")
     else:
         st.info("Select at least one sensor above to compare.")
@@ -2755,7 +2766,7 @@ elif page == "⚠️ Risk Detection":
         gauge_fig.update_layout(
             height=320,
             margin=dict(l=20, r=20, t=40, b=10),
-            paper_bgcolor="white",
+            paper_bgcolor="#e5ebf3",
             font=dict(color=TEXT_DARK),
         )
         st.plotly_chart(gauge_fig, use_container_width=True, key="risk_gauge")
@@ -2791,9 +2802,8 @@ elif page == "⚠️ Risk Detection":
             z_matrix.append(z.values)
             y_labels.append(SENSOR_LABELS.get(col, col))
         z_matrix = np.array(z_matrix)
-        _dm_heat = st.session_state.get("dark_mode", True)
-        _heat_text = "#e2e8f0" if _dm_heat else TEXT_DARK
-        _heat_bg   = "#1e293b" if _dm_heat else "white"
+        _heat_text = "#0f172a"
+        _heat_bg = "#e5ebf3"
         heat_fig = go.Figure(go.Heatmap(
             z=z_matrix,
             x=window_df["cycle"].tolist(),
@@ -2816,11 +2826,11 @@ elif page == "⚠️ Risk Detection":
             height=360,
             margin=dict(l=10, r=10, t=10, b=10),
             paper_bgcolor=_heat_bg,
-            plot_bgcolor=_heat_bg,
+            plot_bgcolor="#eef2f6",
             font=dict(color=_heat_text),
-            xaxis=dict(title="Engine Cycle", color=_heat_text, gridcolor="#334155" if _dm_heat else "#e5e9f2"),
+            xaxis=dict(title="Engine Cycle", color=_heat_text, gridcolor="#cbd5e1"),
             yaxis=dict(title="Sensor", color=_heat_text, autorange="reversed",
-                       gridcolor="#334155" if _dm_heat else "#e5e9f2"),
+                       gridcolor="#cbd5e1"),
         )
         st.plotly_chart(heat_fig, use_container_width=True, key="risk_heatmap")
 
@@ -2965,7 +2975,7 @@ elif page == "⚠️ Risk Detection":
             margin=dict(l=10, r=10, t=40, b=10),
             xaxis_title="Engine",
             yaxis_title="Failure Risk Score (%)",
-            yaxis=dict(range=[0, 115], color=TEXT_DARK, gridcolor="#e5e9f2"),
+            yaxis=dict(range=[0, 115]),
             bargap=0.35,
         ))
         st.plotly_chart(fleet_fig, use_container_width=True, key="fleet_risk_chart")
@@ -3310,16 +3320,15 @@ elif page == "🔍 Anomaly Detection":
             fill="toself",
             fillcolor="rgba(37,99,235,0.15)",
         ))
-        _dm_r = st.session_state.get("dark_mode", True)
-        _r_txt = "#e2e8f0" if _dm_r else TEXT_DARK
-        _r_bg  = "#1e293b" if _dm_r else "white"
+        _r_txt = "#0f172a"
+        _r_bg = "#e5ebf3"
         radar2.update_layout(
             height=340, margin=dict(l=20, r=20, t=20, b=20),
             paper_bgcolor=_r_bg, font=dict(color=_r_txt),
             polar=dict(
-                bgcolor=_r_bg,
+                bgcolor="#eef2f6",
                 radialaxis=dict(visible=True, range=[0, max(3.0, max(values) * 1.1)],
-                                color=_r_txt, gridcolor="#334155" if _dm_r else "#e5e9f2"),
+                                color=_r_txt, gridcolor="#cbd5e1"),
                 angularaxis=dict(color=_r_txt),
             ),
             showlegend=True,
@@ -3481,9 +3490,8 @@ elif page == "🔍 Anomaly Detection":
         heat_y_labels.append(SENSOR_LABELS.get(col_, col_))
     heat_z_matrix = np.array(heat_z_matrix)
 
-    _dm_h2 = st.session_state.get("dark_mode", True)
-    _h2_txt = "#e2e8f0" if _dm_h2 else TEXT_DARK
-    _h2_bg  = "#1e293b" if _dm_h2 else "white"
+    _h2_txt = "#0f172a"
+    _h2_bg = "#e5ebf3"
 
     tl_fig = go.Figure(go.Heatmap(
         z=heat_z_matrix,
@@ -3506,12 +3514,11 @@ elif page == "🔍 Anomaly Detection":
     tl_fig.update_layout(
         height=400,
         margin=dict(l=10, r=10, t=10, b=10),
-        paper_bgcolor=_h2_bg, plot_bgcolor=_h2_bg,
+        paper_bgcolor=_h2_bg, plot_bgcolor="#eef2f6",
         font=dict(color=_h2_txt),
-        xaxis=dict(title="Engine Cycle", color=_h2_txt,
-                   gridcolor="#334155" if _dm_h2 else "#e5e9f2"),
+        xaxis=dict(title="Engine Cycle", color=_h2_txt, gridcolor="#cbd5e1"),
         yaxis=dict(title="Sensor", color=_h2_txt, autorange="reversed",
-                   gridcolor="#334155" if _dm_h2 else "#e5e9f2"),
+                   gridcolor="#cbd5e1"),
     )
     st.plotly_chart(tl_fig, use_container_width=True, key="anom_timeline_heatmap")
 
@@ -4199,18 +4206,18 @@ f"""<div style="background:{banner_bg};border:2px solid {banner_border};border-r
             marker=dict(size=7, color=tier_color),
             hovertemplate="Subsystem: %{theta}<br>Health Score: %{r:.1f} / 100<extra></extra>",
         ))
-        _dm = st.session_state.get("dark_mode", True)
-        _polar_bg = "#1e293b" if _dm else "#ffffff"
-        _polar_line = "#334155" if _dm else "#e2e8f0"
-        _polar_txt = "#cbd5e1" if _dm else "#334155"
+        _polar_bg = "#e5ebf3"
+        _polar_line = "#cbd5e1"
+        _polar_txt = "#0f172a"
 
         fig_radar.update_layout(
             polar=dict(
-                bgcolor=_polar_bg,
+                bgcolor="#eef2f6",
                 radialaxis=dict(visible=True, range=[0, 100], color=_polar_txt, gridcolor=_polar_line),
                 angularaxis=dict(color=_polar_txt, gridcolor=_polar_line),
             ),
             paper_bgcolor=_polar_bg,
+            font=dict(color=_polar_txt),
             height=360,
             margin=dict(l=40, r=40, t=30, b=30),
             showlegend=False,
@@ -4746,11 +4753,13 @@ f"""<div style="background:{alert_bg};border:2px solid {alert_col};border-radius
             marker=dict(size=12, color="#2563eb", line=dict(color="#ffffff", width=2)),
             text=[f"  {cur_rul:.0f} cyc"],
             textposition="top right",
+            textfont=dict(color="#0f172a"),
+            cliponaxis=False,
             hoverinfo="skip",
         ))
         fig_rul_live.update_layout(**styled_layout(
             height=300,
-            margin=dict(l=10, r=10, t=10, b=10),
+            margin=dict(l=14, r=18, t=28, b=14),
             xaxis=dict(title="Operating Cycle", range=[1, max_cycles]),
             yaxis=dict(title="Remaining Cycles"),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
@@ -4786,13 +4795,15 @@ f"""<div style="background:{alert_bg};border:2px solid {alert_col};border-radius
             marker=dict(size=12, color=cur_tier_color, line=dict(color="#ffffff", width=2)),
             text=[f"  {cur_health_score:.1f}"],
             textposition="top right",
+            textfont=dict(color="#0f172a"),
+            cliponaxis=False,
             hoverinfo="skip",
         ))
         fig_hlth_live.update_layout(**styled_layout(
             height=300,
-            margin=dict(l=10, r=10, t=10, b=10),
+            margin=dict(l=14, r=18, t=28, b=14),
             xaxis=dict(title="Operating Cycle", range=[1, max_cycles]),
-            yaxis=dict(title="Health Score (0–100)", range=[0, 105]),
+            yaxis=dict(title="Health Score (0–100)", range=[0, 112]),
             showlegend=False,
         ))
         st.plotly_chart(fig_hlth_live, use_container_width=True, key="live_health_trajectory_chart")
