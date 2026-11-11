@@ -331,8 +331,18 @@ st.markdown(
     /* ===== App background ===== */
     .stApp {{ background-color: {_bg}; }}
     [data-testid="stCaptionContainer"],
-    [data-testid="stCaptionContainer"] * {{
-        color: {'#94a3b8' if _DM else '#64748b'} !important;
+    [data-testid="stCaptionContainer"] *,
+    [data-testid="stMain"] [data-testid="stWidgetLabel"],
+    [data-testid="stMain"] [data-testid="stWidgetLabel"] *,
+    section.main [data-testid="stWidgetLabel"],
+    section.main [data-testid="stWidgetLabel"] *,
+    [data-testid="stMain"] [data-testid="stSliderTickBarMin"],
+    [data-testid="stMain"] [data-testid="stSliderTickBarMax"],
+    [data-testid="stMain"] [data-testid="stThumbValue"],
+    section.main [data-testid="stSliderTickBarMin"],
+    section.main [data-testid="stSliderTickBarMax"],
+    section.main [data-testid="stThumbValue"] {{
+        color: {'#9ca3af' if _DM else '#6b7280'} !important;
     }}
 
     /* ===== Sidebar base ===== */
@@ -2294,8 +2304,14 @@ elif page == "🗄️ Sensor Data":
         <div class="panel-sub">Engine #{int(engine_id):02d} · {fd_choice} · {len(engine_df)} rows</div>
         </div>""", unsafe_allow_html=True)
 
+    _sd_lbl_col = "#9ca3af" if _DM else "#6b7280"
+    st.markdown(
+        f'<div style="color:{_sd_lbl_col};font-size:14px;font-weight:700;margin:2px 0 6px;">Columns to show</div>',
+        unsafe_allow_html=True,
+    )
     show_cols = st.multiselect(
-        "Columns to show", list(engine_df.columns), default=list(engine_df.columns)[:10]
+        "Columns to show", list(engine_df.columns), default=list(engine_df.columns)[:10],
+        label_visibility="collapsed",
     )
     st.dataframe(engine_df[show_cols] if show_cols else engine_df, use_container_width=True, height=380)
 
@@ -2507,7 +2523,11 @@ f"""<div style="background:#f0fdf4;border-left:4px solid #16a34a;border-radius:8
     )
 
     # Pre-set scenario buttons
-    st.markdown("**Choose a Benchmark Operational Condition Scenario:**")
+    _pm_lbl_col = "#9ca3af" if _dm else "#6b7280"
+    st.markdown(
+        f'<div style="color:{_pm_lbl_col};font-size:14px;font-weight:700;margin:4px 0 8px;">Choose a Benchmark Operational Condition Scenario:</div>',
+        unsafe_allow_html=True,
+    )
     sc1, sc2, sc3, sc4 = st.columns(4)
 
     # Session state for simulator values
@@ -2550,16 +2570,23 @@ f"""<div style="background:#f0fdf4;border-left:4px solid #16a34a;border-radius:8
             st.rerun()
 
     # Manual interactive sliders
-    st.markdown("<div style='margin-top:10px;'><b>Or fine-tune custom stress-test parameters manually:</b></div>", unsafe_allow_html=True)
+    st.markdown(
+        f'<div style="color:{_pm_lbl_col};font-size:14px;font-weight:700;margin:10px 0 6px;">Or fine-tune custom stress-test parameters manually:</div>',
+        unsafe_allow_html=True,
+    )
     sl_col1, sl_col2, sl_col3, sl_col4 = st.columns(4)
     with sl_col1:
-        sim_rul_in = st.slider("Simulated RUL (Cycles)", min_value=0, max_value=250, value=int(st.session_state.sim_rul), key="sl_rul")
+        st.markdown(f'<div style="color:{_pm_lbl_col};font-size:13px;font-weight:600;margin-bottom:2px;">Simulated RUL (Cycles)</div>', unsafe_allow_html=True)
+        sim_rul_in = st.slider("Simulated RUL (Cycles)", min_value=0, max_value=250, value=int(st.session_state.sim_rul), key="sl_rul", label_visibility="collapsed")
     with sl_col2:
-        sim_health_in = st.slider("Simulated Health Score", min_value=0, max_value=100, value=int(st.session_state.sim_health), key="sl_health")
+        st.markdown(f'<div style="color:{_pm_lbl_col};font-size:13px;font-weight:600;margin-bottom:2px;">Simulated Health Score</div>', unsafe_allow_html=True)
+        sim_health_in = st.slider("Simulated Health Score", min_value=0, max_value=100, value=int(st.session_state.sim_health), key="sl_health", label_visibility="collapsed")
     with sl_col3:
-        sim_crit_in = st.slider("Critical Anomalies (|Z|>2.5σ)", min_value=0, max_value=6, value=int(st.session_state.sim_crit), key="sl_crit")
+        st.markdown(f'<div style="color:{_pm_lbl_col};font-size:13px;font-weight:600;margin-bottom:2px;">Critical Anomalies (|Z|&gt;2.5σ)</div>', unsafe_allow_html=True)
+        sim_crit_in = st.slider("Critical Anomalies (|Z|>2.5σ)", min_value=0, max_value=6, value=int(st.session_state.sim_crit), key="sl_crit", label_visibility="collapsed")
     with sl_col4:
-        sim_warn_in = st.slider("Warning Anomalies (|Z|>1.5σ)", min_value=0, max_value=12, value=int(st.session_state.sim_warn), key="sl_warn")
+        st.markdown(f'<div style="color:{_pm_lbl_col};font-size:13px;font-weight:600;margin-bottom:2px;">Warning Anomalies (|Z|&gt;1.5σ)</div>', unsafe_allow_html=True)
+        sim_warn_in = st.slider("Warning Anomalies (|Z|>1.5σ)", min_value=0, max_value=12, value=int(st.session_state.sim_warn), key="sl_warn", label_visibility="collapsed")
 
     # Evaluate simulated scenario
     sim_res = evaluate_predictive_maintenance(sim_rul_in, sim_health_in, sim_crit_in, sim_warn_in)
@@ -2595,7 +2622,7 @@ f"""<div style="background:{sim_bg};border:2px dashed {sim_col};border-radius:12
 
     wo_col1, wo_col2 = st.columns([1.3, 1.0])
     with wo_col1:
-        st.markdown("**FAA / EASA Standard Work Order Directives:**")
+        st.markdown(f'<div style="color:{_pm_lbl_col};font-size:14px;font-weight:700;margin-bottom:6px;">FAA / EASA Standard Work Order Directives:</div>', unsafe_allow_html=True)
         wo_items = "".join([f"<li style='margin-bottom:8px;line-height:1.5;'>{item}</li>" for item in maint_eval["work_scope"]])
         st.markdown(
             f"""<div style="background:{sub_box_bg};border:1px solid {_dm and '#334155' or '#e2e8f0'};border-radius:10px;padding:16px 20px;">
@@ -2605,7 +2632,7 @@ f"""<div style="background:{sim_bg};border:2px dashed {sim_col};border-radius:12
             </div>""", unsafe_allow_html=True)
 
     with wo_col2:
-        st.markdown("**Component Degradation Radar:**")
+        st.markdown(f'<div style="color:{_pm_lbl_col};font-size:14px;font-weight:700;margin-bottom:6px;">Component Degradation Radar:</div>', unsafe_allow_html=True)
         subsys_dict = hlth_info["subsystems"]
         for s_n, s_v in subsys_dict.items():
             if s_v < 60:
@@ -2878,7 +2905,8 @@ elif page == "⚠️ Risk Detection":
     # ------------------------------------------------------------------
     # 5. MAINTENANCE ALERT PANEL
     # ------------------------------------------------------------------
-    st.markdown("### 🚨 Maintenance Action")
+    _rk_lbl_col = "#9ca3af" if _DM else "#6b7280"
+    st.markdown(f'<h3 style="color:{_rk_lbl_col};margin:8px 0 10px;">🚨 Maintenance Action</h3>', unsafe_allow_html=True)
     if risk_label_full == "CRITICAL":
         st.markdown(
             f"""
@@ -3378,17 +3406,20 @@ elif page == "🔍 Anomaly Detection":
     # SECTION 6 — SENSOR DEEP DIVE
     # -----------------------------------------------------------------------
     st.markdown("---")
-    st.markdown("### 🔍 Sensor Deep Dive")
-    st.markdown("Select any sensor to inspect its full history, rolling z-score, and anomaly timeline.")
+    _an_lbl_col = "#9ca3af" if _DM else "#6b7280"
+    st.markdown(f'<h3 style="color:{_an_lbl_col};margin:6px 0 4px;">🔍 Sensor Deep Dive</h3>', unsafe_allow_html=True)
+    st.markdown(f'<div style="color:{_an_lbl_col};font-size:14px;margin-bottom:10px;">Select any sensor to inspect its full history, rolling z-score, and anomaly timeline.</div>', unsafe_allow_html=True)
 
     sensor_opts = [c for c in engine_df.columns if c.startswith("sensor_")]
     # Default to the most anomalous sensor
     default_idx = int(anom_report["worst_z"].abs().idxmax())
     default_sensor = anom_report.loc[default_idx, "sensor"]
+    st.markdown(f'<div style="color:{_an_lbl_col};font-size:13.5px;font-weight:700;margin:2px 0 6px;">Choose a sensor</div>', unsafe_allow_html=True)
     dd_sensor = st.selectbox(
         "Choose a sensor",
         sensor_opts,
         index=sensor_opts.index(default_sensor) if default_sensor in sensor_opts else 0,
+        label_visibility="collapsed",
         format_func=lambda c: f"{c} — {SENSOR_LABELS.get(c, c)}",
         key="anom_dd_sensor",
     )
@@ -3536,7 +3567,7 @@ elif page == "🔍 Anomaly Detection":
     # -----------------------------------------------------------------------
     # SECTION 8 — MAINTENANCE RECOMMENDATION
     # -----------------------------------------------------------------------
-    st.markdown("### 🛠️ Recommended Actions")
+    st.markdown(f'<h3 style="color:{_an_lbl_col};margin:12px 0 10px;">🛠️ Recommended Actions</h3>', unsafe_allow_html=True)
     crit_sensors = anom_report[anom_report["status"] == "Critical"]["label"].tolist()
     warn_sensors = anom_report[anom_report["status"] == "Warning"]["label"].tolist()
 
@@ -4506,12 +4537,15 @@ elif page == "📡 Real-Time Monitoring":
                 </div>""", unsafe_allow_html=True)
 
     # Scrubber Slider
+    _rt_lbl_col = "#9ca3af" if _dm else "#6b7280"
+    st.markdown(f'<div style="color:{_rt_lbl_col};font-size:13.5px;font-weight:700;margin:8px 0 2px;">Flight Cycle Scrubber</div>', unsafe_allow_html=True)
     scrub_val = st.slider(
         "Flight Cycle Scrubber",
         min_value=1,
         max_value=max_cycles,
         value=int(st.session_state.stream_cycle),
         key="stream_cycle_slider",
+        label_visibility="collapsed",
         help="Drag to scrub directly to any operating cycle in the engine lifespan.",
     )
     if scrub_val != st.session_state.stream_cycle and not st.session_state.is_streaming:
