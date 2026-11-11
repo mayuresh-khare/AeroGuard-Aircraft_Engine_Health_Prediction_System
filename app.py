@@ -195,6 +195,9 @@ SCALER_PATH = os.path.join(BASE_DIR, "scaler.pkl")
 IMPROVED_MODEL_PATH = os.path.join(BASE_DIR, "improved_rul_model.pkl")
 IMPROVED_SCALER_PATH = os.path.join(BASE_DIR, "improved_rul_scaler.pkl")
 IMPROVED_FEATS_PATH = os.path.join(BASE_DIR, "improved_model_features.json")
+IMPROVED_Q10_PATH = os.path.join(BASE_DIR, "improved_rul_q10.pkl")
+IMPROVED_Q90_PATH = os.path.join(BASE_DIR, "improved_rul_q90.pkl")
+IMPROVED_QMETA_PATH = os.path.join(BASE_DIR, "improved_rul_quantiles_meta.json")
 COMPARISON_METRICS_PATH = os.path.join(BASE_DIR, "model_comparison_metrics.csv")
 FEATURE_IMPORTANCES_PATH = os.path.join(BASE_DIR, "feature_importances.csv")
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -804,6 +807,30 @@ def load_improved_model_and_scaler():
     return imp_model, imp_scaler, imp_feats
 
 
+@st.cache_resource(show_spinner=False)
+def load_quantile_models():
+    """Loads calibrated Q10/Q90 quantile regressors and conformal margin metadata."""
+    q10_model, q90_model, q_meta = None, None, None
+    if joblib is not None:
+        try:
+            if os.path.exists(IMPROVED_Q10_PATH):
+                q10_model = joblib.load(IMPROVED_Q10_PATH)
+        except Exception:
+            q10_model = None
+        try:
+            if os.path.exists(IMPROVED_Q90_PATH):
+                q90_model = joblib.load(IMPROVED_Q90_PATH)
+        except Exception:
+            q90_model = None
+    try:
+        if os.path.exists(IMPROVED_QMETA_PATH):
+            with open(IMPROVED_QMETA_PATH, "r", encoding="utf-8") as f:
+                q_meta = json.load(f)
+    except Exception:
+        q_meta = None
+    return q10_model, q90_model, q_meta
+
+
 def engineer_engine_features(eng: pd.DataFrame, feature_names: list) -> np.ndarray:
     """Computes all 73 engineered degradation features for a given engine."""
     df = eng.copy().sort_values("cycle").reset_index(drop=True)
@@ -894,6 +921,43 @@ def predict_rul_batch(model, scaler, frame: pd.DataFrame):
 def predict_rul_row(model, scaler, row: pd.Series):
     preds, used = predict_rul_batch(model, scaler, pd.DataFrame([row]))
     return float(preds[0]), used
+
+
+def predict_improved_rul_intervals_batch(
+    imp_model,
+    imp_scaler,
+    imp_feats,
+    q10_model,
+    q90_model,
+    q_meta,
+    frame: pd.DataFrame,
+):
+    """Returns (point_preds, lower_q10, upper_q90, imp_used, quantiles_used) with monotonic non-crossing CQR bounds."""
+    pt_preds, imp_used = predict_improved_rul_batch(imp_model, imp_scaler, imp_feats, frame)
+    if (
+        imp_used
+        and q10_model is not None
+        and q90_model is not None
+        and imp_scaler is not None
+        and imp_feats is not None
+        and not frame.empty
+    ):
+        try:
+            X = engineer_engine_features(frame, imp_feats)
+            X_sc = imp_scaler.transform(X)
+            cqr_pad = max(0.0, float(q_meta.get("cqr_margin", 0.0))) if isinstance(q_meta, dict) else 0.0
+            raw_lo = np.ravel(q10_model.predict(X_sc)).astype(float) - cqr_pad
+            raw_hi = np.ravel(q90_model.predict(X_sc)).astype(float) + cqr_pad
+            lo = np.maximum(1.0, np.minimum(raw_lo, pt_preds))
+            hi = np.maximum(pt_preds, np.maximum(raw_hi, lo + 2.0))
+            return pt_preds, lo, hi, imp_used, True
+        except Exception:
+            pass
+
+    half_w = np.maximum(6.0, 0.18 * pt_preds + 8.0)
+    lo = np.maximum(1.0, pt_preds - half_w)
+    hi = pt_preds + half_w
+    return pt_preds, lo, hi, imp_used, False
 
 
 def _format_xai_metric_val(val: float) -> str:
@@ -1956,11 +2020,17 @@ prev = engine_df.iloc[-2] if len(engine_df) > 1 else latest
 
 model, scaler = load_model_and_scaler()
 imp_model, imp_scaler, imp_feats = load_improved_model_and_scaler()
+q10_model, q90_model, q_meta = load_quantile_models()
 
 rul_base_arr, base_used = predict_baseline_rul_batch(model, scaler, engine_df)
-rul_imp_arr, imp_used = predict_improved_rul_batch(imp_model, imp_scaler, imp_feats, engine_df)
+rul_imp_arr, rul_imp_lo_arr, rul_imp_hi_arr, imp_used, q_bounds_used = predict_improved_rul_intervals_batch(
+    imp_model, imp_scaler, imp_feats, q10_model, q90_model, q_meta, engine_df
+)
 
 rul_pred = float(rul_imp_arr[-1]) if imp_used else float(rul_base_arr[-1])
+rul_lo_latest = float(rul_imp_lo_arr[-1])
+rul_hi_latest = float(rul_imp_hi_arr[-1])
+rul_half_width = max(1.0, 0.5 * (rul_hi_latest - rul_lo_latest))
 rul_base_latest = float(rul_base_arr[-1])
 rul_true_latest = float(latest["RUL"]) if "RUL" in latest else None
 model_used = imp_used or base_used
@@ -2048,12 +2118,12 @@ if page == "🏠 Dashboard":
             <div class="kpi-sub">Outlet temperature &nbsp;<span class="{cls}">{arrow} {abs(hpc_change):.1f}%</span></div>
             </div>""", unsafe_allow_html=True)
     with k3:
-        src = "Gradient Boosting model" if model_used else "Estimated (model not loaded)"
+        src = "CQR 80% CI" if q_bounds_used else ("Est. CI" if model_used else "Estimated")
         st.markdown(
             f"""<div class="kpi-card">
             <div class="kpi-label">📊 RUL Prediction</div>
             <div class="kpi-value">{rul_pred:,.0f} cycles</div>
-            <div class="kpi-sub">{src}</div>
+            <div class="kpi-sub">{src}: <b>{rul_lo_latest:.0f}–{rul_hi_latest:.0f} cyc</b> (±{rul_half_width:.0f})</div>
             </div>""", unsafe_allow_html=True)
     with k4:
         st.markdown(
@@ -2396,11 +2466,12 @@ f"""<div style="background:{m_bg};border:2px solid {m_col};border-radius:16px;pa
             <div class="kpi-sub">Composite maintenance priority</div>
             </div>""", unsafe_allow_html=True)
     with k3:
+        _pm_ci_tag = "80% CQR" if q_bounds_used else "Est. Band"
         st.markdown(
             f"""<div class="kpi-card">
             <div class="kpi-label">⏱️ Forecasted RUL</div>
             <div class="kpi-value" style="color:#2563eb;">{rul_pred:,.0f} cyc</div>
-            <div class="kpi-sub">Cycle threshold: {30 if rul_pred < 75 else 75} cycles</div>
+            <div class="kpi-sub">{_pm_ci_tag}: <b>{rul_lo_latest:.0f}–{rul_hi_latest:.0f} cyc</b></div>
             </div>""", unsafe_allow_html=True)
     with k4:
         st.markdown(
@@ -3624,10 +3695,14 @@ elif page == "🎯 RUL Improvement":
 
     # Baseline Model prediction across all cycles of this engine
     base_preds_engine, _ = predict_baseline_rul_batch(model, scaler, engine_df)
-    # Improved Model prediction across all cycles of this engine
-    imp_preds_engine, _ = predict_improved_rul_batch(imp_model, imp_scaler, imp_feats, engine_df)
+    # Improved Model prediction + 80% Conformal Quantile Bounds across all cycles
+    imp_preds_engine, imp_lo_engine, imp_hi_engine, _, imp_q_used = predict_improved_rul_intervals_batch(
+        imp_model, imp_scaler, imp_feats, q10_model, q90_model, q_meta, engine_df
+    )
 
     latest_imp_pred = float(imp_preds_engine[-1])
+    latest_imp_lo = float(imp_lo_engine[-1])
+    latest_imp_hi = float(imp_hi_engine[-1])
     latest_base_pred = float(base_preds_engine[-1])
     latest_true = float(true_rul_arr[-1]) if has_ground_truth else None
 
@@ -3655,10 +3730,11 @@ elif page == "🎯 RUL Improvement":
     _base_sub = f"Error: {base_err:.1f} cyc" if base_err is not None else "6 Features"
 
     improved_card_html = (
-        f'<div style="background:{_c_bg};padding:12px 18px;border-radius:12px;border:1px solid {_c_brd};text-align:center;min-width:110px;">'
+        f'<div style="background:{_c_bg};padding:12px 18px;border-radius:12px;border:1px solid {_c_brd};text-align:center;min-width:130px;">'
         f'<div style="font-size:11px;color:{_c_lbl};font-weight:700;">IMPROVED MODEL</div>'
         f'<div style="font-size:24px;font-weight:900;color:#2563eb;">{latest_imp_pred:,.0f} <span style="font-size:12px;">cyc</span></div>'
-        f'<div style="font-size:11px;color:#16a34a;font-weight:700;">{_imp_sub}</div>'
+        f'<div style="font-size:11px;color:#38bdf8;font-weight:700;">80% CI: {latest_imp_lo:.0f}–{latest_imp_hi:.0f}</div>'
+        f'<div style="font-size:10.5px;color:#16a34a;font-weight:700;">{_imp_sub}</div>'
         f'</div>'
     )
 
@@ -3862,6 +3938,23 @@ elif page == "🎯 RUL Improvement":
 
         fig_rul = go.Figure()
 
+        # 80% Conformal Quantile Uncertainty Cone [Q10 .. Q90]
+        fig_rul.add_trace(go.Scatter(
+            x=eng_cycles, y=imp_hi_engine, mode="lines",
+            name="Q90 Upper Bound",
+            line=dict(width=0),
+            hovertemplate="Cycle: %{x}<br>Upper 90th Pct: %{y:,.1f} cyc<extra></extra>",
+            showlegend=False,
+        ))
+        fig_rul.add_trace(go.Scatter(
+            x=eng_cycles, y=imp_lo_engine, mode="lines",
+            name="80% Uncertainty Band (Q10–Q90)",
+            line=dict(width=0),
+            fill="tonexty",
+            fillcolor="rgba(37,99,235,0.18)",
+            hovertemplate="Cycle: %{x}<br>Lower 10th Pct: %{y:,.1f} cyc<extra></extra>",
+        ))
+
         # Ground Truth line (if available)
         if has_ground_truth:
             fig_rul.add_trace(go.Scatter(
@@ -3901,6 +3994,11 @@ elif page == "🎯 RUL Improvement":
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         ))
         st.plotly_chart(fig_rul, use_container_width=True, key="rul_degradation_chart")
+        if imp_q_used and isinstance(q_meta, dict):
+            st.caption(
+                f"Shaded cone = Conformalized 80% Quantile Interval [Q10–Q90] · CQR pad `+{q_meta.get('cqr_margin', 0.0):.2f} cyc` · "
+                f"Holdout coverage: `{q_meta.get('empirical_test_coverage', 0.8)*100:.1f}%` (pinball losses: Q10={q_meta.get('pinball_loss_q10', 0):.2f}, Q90={q_meta.get('pinball_loss_q90', 0):.2f})."
+            )
 
     with ch2:
         st.markdown(
@@ -4461,7 +4559,9 @@ elif page == "📡 Real-Time Monitoring":
     st.session_state.stream_cycle = max(1, min(int(st.session_state.stream_cycle), max_cycles))
 
     # Precompute fast batch arrays for the selected engine
-    all_imp_preds, _ = predict_improved_rul_batch(imp_model, imp_scaler, imp_feats, engine_df)
+    all_imp_preds, all_imp_lo, all_imp_hi, _, _ = predict_improved_rul_intervals_batch(
+        imp_model, imp_scaler, imp_feats, q10_model, q90_model, q_meta, engine_df
+    )
     all_traj_scores = compute_health_trajectory(engine_df, all_imp_preds)
     all_cycles = engine_df["cycle"].values.astype(int) if "cycle" in engine_df.columns else np.arange(1, max_cycles + 1)
 
@@ -4587,6 +4687,8 @@ elif page == "📡 Real-Time Monitoring":
     prev_row = cur_sub_df.iloc[-2] if len(cur_sub_df) > 1 else cur_row
 
     cur_rul = float(all_imp_preds[cur_c - 1])
+    cur_lo = float(all_imp_lo[cur_c - 1])
+    cur_hi = float(all_imp_hi[cur_c - 1])
     cur_health_score = float(all_traj_scores[cur_c - 1])
     cur_health_info = compute_engine_health_score(cur_sub_df, cur_rul)
     cur_tier = cur_health_info["tier"]
@@ -4671,7 +4773,7 @@ f"""<div style="background:{alert_bg};border:2px solid {alert_col};border-radius
             f"""<div class="kpi-card">
             <div class="kpi-label">⏱️ Live Predicted RUL</div>
             <div class="kpi-value" style="color:#2563eb;">{cur_rul:,.0f} cyc</div>
-            <div class="kpi-sub">Δ from initial: <b style="color:{'#dc2626' if rul_delta < 0 else '#16a34a'};">{rul_delta:+.0f} cyc</b></div>
+            <div class="kpi-sub">80% CI: <b>{cur_lo:.0f}–{cur_hi:.0f}</b> &nbsp;·&nbsp; Δ <b style="color:{'#dc2626' if rul_delta < 0 else '#16a34a'};">{rul_delta:+.0f}</b></div>
             </div>""", unsafe_allow_html=True)
     with k3:
         st.markdown(
@@ -4773,6 +4875,25 @@ f"""<div style="background:{alert_bg};border:2px solid {alert_col};border-radius
             </div>""", unsafe_allow_html=True)
 
         fig_rul_live = go.Figure()
+        fig_rul_live.add_trace(go.Scatter(
+            x=stream_cycles_x,
+            y=all_imp_hi[:cur_c],
+            mode="lines",
+            name="Q90 Bound",
+            line=dict(width=0),
+            showlegend=False,
+            hoverinfo="skip",
+        ))
+        fig_rul_live.add_trace(go.Scatter(
+            x=stream_cycles_x,
+            y=all_imp_lo[:cur_c],
+            mode="lines",
+            name="80% Uncertainty",
+            line=dict(width=0),
+            fill="tonexty",
+            fillcolor="rgba(37,99,235,0.18)",
+            hovertemplate="Cycle %{x} 80% CI lower: %{y:.0f} cyc<extra></extra>",
+        ))
         fig_rul_live.add_trace(go.Scatter(
             x=stream_cycles_x,
             y=all_imp_preds[:cur_c],

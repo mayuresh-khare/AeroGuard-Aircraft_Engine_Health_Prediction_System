@@ -1,0 +1,12 @@
+{
+  "target_coverage": 0.8,
+  "alpha_low": 0.1,
+  "alpha_high": 0.9,
+  "cqr_margin": 0.9808,
+  "empirical_test_coverage": 0.7921,
+  "mean_interval_width_cycles": 92.75,
+  "pinball_loss_q10": 5.149,
+  "pinball_loss_q90": 6.645,
+  "q10_size_kb": 439.6,
+  "q90_size_kb": 437.7
+}
