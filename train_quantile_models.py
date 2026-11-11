@@ -1,9 +1,10 @@
 """
 train_quantile_models.py
 ========================
-Trains lower (alpha=0.10) and upper (alpha=0.90) quantile regression models
-with split-conformal calibration (CQR) over the 73 engineered C-MAPSS features
-to provide calibrated 80% RUL prediction uncertainty intervals [Q10, Q90].
+Trains lower (alpha=0.10) and upper (alpha=0.90) GradientBoostingRegressor quantile
+models with split-conformal calibration (CQR) over the 73 engineered C-MAPSS features,
+and exports sklearn-version-independent pure-NumPy portable bundles (.npz) for both
+point/baseline models and quantile bounds so Streamlit Cloud never fails unpickling.
 """
 
 import os
@@ -11,7 +12,7 @@ import json
 import warnings
 import joblib
 import numpy as np
-from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_pinball_loss
 
@@ -23,21 +24,66 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FEATS_PATH = os.path.join(BASE_DIR, "improved_model_features.json")
 SCALER_PATH = os.path.join(BASE_DIR, "improved_rul_scaler.pkl")
 POINT_MODEL_PATH = os.path.join(BASE_DIR, "improved_rul_model.pkl")
+BASE_MODEL_PATH = os.path.join(BASE_DIR, "gradient_boosting_model.pkl")
+BASE_SCALER_PATH = os.path.join(BASE_DIR, "scaler.pkl")
 
 OUT_Q10 = os.path.join(BASE_DIR, "improved_rul_q10.pkl")
 OUT_Q90 = os.path.join(BASE_DIR, "improved_rul_q90.pkl")
 OUT_META = os.path.join(BASE_DIR, "improved_rul_quantiles_meta.json")
 
+OUT_BASE_PORTABLE = os.path.join(BASE_DIR, "baseline_rul_portable.npz")
+OUT_IMP_PORTABLE = os.path.join(BASE_DIR, "improved_rul_portable.npz")
+OUT_Q10_PORTABLE = os.path.join(BASE_DIR, "improved_rul_q10_portable.npz")
+OUT_Q90_PORTABLE = os.path.join(BASE_DIR, "improved_rul_q90_portable.npz")
+
+
+def export_gbr_to_portable_npz(model, scaler, out_path: str):
+    """Exports a GradientBoostingRegressor + StandardScaler into a pure-NumPy .npz bundle."""
+    trees = [est.tree_ for est in np.asarray(model.estimators_).ravel()]
+    offsets = [0]
+    cl_list, cr_list, feat_list, thresh_list, val_list = [], [], [], [], []
+    for tr in trees:
+        cl_list.append(np.asarray(tr.children_left, dtype=np.int32))
+        cr_list.append(np.asarray(tr.children_right, dtype=np.int32))
+        feat_list.append(np.asarray(tr.feature, dtype=np.int32))
+        thresh_list.append(np.asarray(tr.threshold, dtype=np.float64))
+        val_list.append(np.asarray(tr.value[:, 0, 0], dtype=np.float64))
+        offsets.append(offsets[-1] + tr.node_count)
+
+    n_feats = len(scaler.mean_)
+    init_const = float(model.init_.predict(np.zeros((1, n_feats)))[0])
+    np.savez_compressed(
+        out_path,
+        scaler_mean=np.asarray(scaler.mean_, dtype=np.float64),
+        scaler_scale=np.asarray(scaler.scale_, dtype=np.float64),
+        init_const=np.array([init_const], dtype=np.float64),
+        learning_rate=np.array([float(model.learning_rate)], dtype=np.float64),
+        tree_offsets=np.asarray(offsets, dtype=np.int32),
+        children_left=np.concatenate(cl_list),
+        children_right=np.concatenate(cr_list),
+        feature=np.concatenate(feat_list),
+        threshold=np.concatenate(thresh_list),
+        value=np.concatenate(val_list),
+    )
+    return round(os.path.getsize(out_path) / 1024.0, 1)
+
 
 def main():
     print("=" * 65)
-    print("AeroGuard — Quantile Uncertainty Bounds (CQR 80% Interval)")
+    print("AeroGuard — Quantile Uncertainty + Portable Bundle Exporter")
     print("=" * 65)
 
     with open(FEATS_PATH, "r", encoding="utf-8") as f:
         feats = json.load(f)
     scaler = joblib.load(SCALER_PATH)
     point_model = joblib.load(POINT_MODEL_PATH)
+    base_model = joblib.load(BASE_MODEL_PATH)
+    base_scaler = joblib.load(BASE_SCALER_PATH)
+
+    # Export point & baseline models to portable pure-NumPy bundles
+    base_kb = export_gbr_to_portable_npz(base_model, base_scaler, OUT_BASE_PORTABLE)
+    imp_kb = export_gbr_to_portable_npz(point_model, scaler, OUT_IMP_PORTABLE)
+    print(f"Exported portable bundles: baseline ({base_kb} KB), improved ({imp_kb} KB)")
 
     df = load_all_datasets()
     df_feat = df.groupby("unit_key", group_keys=False).apply(engineer_unit)
@@ -58,17 +104,16 @@ def main():
 
     params = dict(
         loss="quantile",
-        max_iter=200,
-        max_leaf_nodes=31,
-        learning_rate=0.08,
-        min_samples_leaf=20,
-        l2_regularization=0.1,
+        n_estimators=75,
+        max_depth=4,
+        learning_rate=0.09,
+        subsample=0.35,
         random_state=42,
     )
-    q10_model = HistGradientBoostingRegressor(quantile=0.10, **params)
-    q90_model = HistGradientBoostingRegressor(quantile=0.90, **params)
+    q10_model = GradientBoostingRegressor(alpha=0.10, **params)
+    q90_model = GradientBoostingRegressor(alpha=0.90, **params)
 
-    print("\nTraining Q10 (lower bound) & Q90 (upper bound) regressors...")
+    print("\nTraining GBR Q10 (lower) & Q90 (upper) quantile regressors...")
     q10_model.fit(X_qtr_sc, y_qtr)
     q90_model.fit(X_qtr_sc, y_qtr)
 
@@ -94,6 +139,8 @@ def main():
 
     joblib.dump(q10_model, OUT_Q10, compress=3)
     joblib.dump(q90_model, OUT_Q90, compress=3)
+    q10_port_kb = export_gbr_to_portable_npz(q10_model, scaler, OUT_Q10_PORTABLE)
+    q90_port_kb = export_gbr_to_portable_npz(q90_model, scaler, OUT_Q90_PORTABLE)
 
     meta = {
         "target_coverage": 0.80,
@@ -104,14 +151,16 @@ def main():
         "mean_interval_width_cycles": round(mean_width, 2),
         "pinball_loss_q10": round(pb10, 3),
         "pinball_loss_q90": round(pb90, 3),
-        "q10_size_kb": round(os.path.getsize(OUT_Q10) / 1024.0, 1),
-        "q90_size_kb": round(os.path.getsize(OUT_Q90) / 1024.0, 1),
+        "q10_portable_kb": q10_port_kb,
+        "q90_portable_kb": q90_port_kb,
+        "improved_portable_kb": imp_kb,
+        "baseline_portable_kb": base_kb,
     }
     with open(OUT_META, "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2)
 
     print(f"CQR Margin: +{cqr_margin:.2f} cyc | Test Coverage: {emp_cov*100:.1f}% | Mean Width: {mean_width:.1f} cyc")
-    print(f"Saved: {OUT_Q10} ({meta['q10_size_kb']} KB), {OUT_Q90} ({meta['q90_size_kb']} KB), {OUT_META}")
+    print(f"Portable bundles saved: Q10 ({q10_port_kb} KB), Q90 ({q90_port_kb} KB)")
 
 
 if __name__ == "__main__":

@@ -2,11 +2,13 @@
   "target_coverage": 0.8,
   "alpha_low": 0.1,
   "alpha_high": 0.9,
-  "cqr_margin": 0.9808,
-  "empirical_test_coverage": 0.7921,
-  "mean_interval_width_cycles": 92.75,
-  "pinball_loss_q10": 5.149,
-  "pinball_loss_q90": 6.645,
-  "q10_size_kb": 439.6,
-  "q90_size_kb": 437.7
+  "cqr_margin": 0.0208,
+  "empirical_test_coverage": 0.7993,
+  "mean_interval_width_cycles": 109.66,
+  "pinball_loss_q10": 6.337,
+  "pinball_loss_q90": 7.715,
+  "q10_portable_kb": 26.1,
+  "q90_portable_kb": 25.4,
+  "improved_portable_kb": 35.3,
+  "baseline_portable_kb": 16.9
 }

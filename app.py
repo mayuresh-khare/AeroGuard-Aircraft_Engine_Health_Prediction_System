@@ -198,6 +198,10 @@ IMPROVED_FEATS_PATH = os.path.join(BASE_DIR, "improved_model_features.json")
 IMPROVED_Q10_PATH = os.path.join(BASE_DIR, "improved_rul_q10.pkl")
 IMPROVED_Q90_PATH = os.path.join(BASE_DIR, "improved_rul_q90.pkl")
 IMPROVED_QMETA_PATH = os.path.join(BASE_DIR, "improved_rul_quantiles_meta.json")
+BASELINE_PORTABLE_PATH = os.path.join(BASE_DIR, "baseline_rul_portable.npz")
+IMPROVED_PORTABLE_PATH = os.path.join(BASE_DIR, "improved_rul_portable.npz")
+IMPROVED_Q10_PORTABLE_PATH = os.path.join(BASE_DIR, "improved_rul_q10_portable.npz")
+IMPROVED_Q90_PORTABLE_PATH = os.path.join(BASE_DIR, "improved_rul_q90_portable.npz")
 COMPARISON_METRICS_PATH = os.path.join(BASE_DIR, "model_comparison_metrics.csv")
 FEATURE_IMPORTANCES_PATH = os.path.join(BASE_DIR, "feature_importances.csv")
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -767,8 +771,97 @@ def load_dataset(fd_choice: str) -> pd.DataFrame:
     return generate_demo_data(fd_choice)
 
 
+class PortableStandardScaler:
+    """Pure-NumPy StandardScaler compatible across all Python/NumPy/sklearn versions."""
+
+    def __init__(self, mean_, scale_):
+        self.mean_ = np.asarray(mean_, dtype=np.float64)
+        s = np.asarray(scale_, dtype=np.float64)
+        self.scale_ = np.where(s == 0.0, 1.0, s)
+
+    def transform(self, X):
+        return (np.asarray(X, dtype=np.float64) - self.mean_) / self.scale_
+
+
+class _PortableTreeData:
+    def __init__(self, cl, cr, feat, thresh, val):
+        self.children_left = cl
+        self.children_right = cr
+        self.feature = feat
+        self.threshold = thresh
+        self.value = val[:, np.newaxis, np.newaxis]
+
+
+class _PortableEstimator:
+    def __init__(self, tree_data):
+        self.tree_ = tree_data
+
+
+class _PortableInitConst:
+    def __init__(self, const_val: float):
+        self.const_val = float(const_val)
+
+    def predict(self, X):
+        return np.full(len(X), self.const_val, dtype=np.float64)
+
+
+class PortableGBR:
+    """Pure-NumPy GradientBoostingRegressor supporting predict() and exact tree-path XAI."""
+
+    def __init__(self, init_const: float, learning_rate: float, trees: list):
+        self.init_ = _PortableInitConst(init_const)
+        self.learning_rate = float(learning_rate)
+        self.estimators_ = np.array([_PortableEstimator(t) for t in trees], dtype=object)
+
+    def predict(self, X):
+        X_arr = np.asarray(X, dtype=np.float64)
+        n_rows = len(X_arr)
+        out = np.full(n_rows, self.init_.const_val, dtype=np.float64)
+        lr = self.learning_rate
+        for i in range(n_rows):
+            row = X_arr[i]
+            acc = 0.0
+            for est in self.estimators_:
+                tr = est.tree_
+                node = 0
+                while tr.children_left[node] != tr.children_right[node]:
+                    if row[tr.feature[node]] <= tr.threshold[node]:
+                        node = int(tr.children_left[node])
+                    else:
+                        node = int(tr.children_right[node])
+                acc += float(tr.value[node, 0, 0])
+            out[i] += lr * acc
+        return out
+
+
+def _load_portable_bundle(npz_path: str):
+    """Loads (PortableGBR, PortableStandardScaler) from a compressed .npz bundle."""
+    if not os.path.exists(npz_path):
+        return None, None
+    data = np.load(npz_path, allow_pickle=False)
+    scaler = PortableStandardScaler(data["scaler_mean"], data["scaler_scale"])
+    offsets = data["tree_offsets"]
+    cl = data["children_left"]
+    cr = data["children_right"]
+    feat = data["feature"]
+    thresh = data["threshold"]
+    val = data["value"]
+    trees = []
+    for i in range(len(offsets) - 1):
+        a, b = int(offsets[i]), int(offsets[i + 1])
+        trees.append(_PortableTreeData(cl[a:b], cr[a:b], feat[a:b], thresh[a:b], val[a:b]))
+    model = PortableGBR(float(data["init_const"][0]), float(data["learning_rate"][0]), trees)
+    return model, scaler
+
+
 @st.cache_resource(show_spinner=False)
 def load_model_and_scaler():
+    try:
+        p_model, p_scaler = _load_portable_bundle(BASELINE_PORTABLE_PATH)
+        if p_model is not None and p_scaler is not None:
+            return p_model, p_scaler
+    except Exception:
+        pass
     model, scaler = None, None
     if joblib is not None:
         try:
@@ -787,6 +880,20 @@ def load_model_and_scaler():
 @st.cache_resource(show_spinner=False)
 def load_improved_model_and_scaler():
     imp_model, imp_scaler, imp_feats = None, None, None
+    try:
+        if os.path.exists(IMPROVED_FEATS_PATH):
+            with open(IMPROVED_FEATS_PATH, "r", encoding="utf-8") as f:
+                imp_feats = json.load(f)
+    except Exception:
+        imp_feats = None
+
+    try:
+        p_model, p_scaler = _load_portable_bundle(IMPROVED_PORTABLE_PATH)
+        if p_model is not None and p_scaler is not None:
+            return p_model, p_scaler, imp_feats
+    except Exception:
+        pass
+
     if joblib is not None:
         try:
             if os.path.exists(IMPROVED_MODEL_PATH):
@@ -798,30 +905,36 @@ def load_improved_model_and_scaler():
                 imp_scaler = joblib.load(IMPROVED_SCALER_PATH)
         except Exception:
             imp_scaler = None
-        try:
-            if os.path.exists(IMPROVED_FEATS_PATH):
-                with open(IMPROVED_FEATS_PATH, "r") as f:
-                    imp_feats = json.load(f)
-        except Exception:
-            imp_feats = None
     return imp_model, imp_scaler, imp_feats
 
 
 @st.cache_resource(show_spinner=False)
 def load_quantile_models():
-    """Loads calibrated Q10/Q90 quantile regressors and conformal margin metadata."""
+    """Loads calibrated Q10/Q90 quantile regressors (portable .npz first, .pkl fallback) and CQR metadata."""
     q10_model, q90_model, q_meta = None, None, None
+    try:
+        q10_p, _ = _load_portable_bundle(IMPROVED_Q10_PORTABLE_PATH)
+        q90_p, _ = _load_portable_bundle(IMPROVED_Q90_PORTABLE_PATH)
+        if q10_p is not None:
+            q10_model = q10_p
+        if q90_p is not None:
+            q90_model = q90_p
+    except Exception:
+        pass
+
     if joblib is not None:
-        try:
-            if os.path.exists(IMPROVED_Q10_PATH):
-                q10_model = joblib.load(IMPROVED_Q10_PATH)
-        except Exception:
-            q10_model = None
-        try:
-            if os.path.exists(IMPROVED_Q90_PATH):
-                q90_model = joblib.load(IMPROVED_Q90_PATH)
-        except Exception:
-            q90_model = None
+        if q10_model is None:
+            try:
+                if os.path.exists(IMPROVED_Q10_PATH):
+                    q10_model = joblib.load(IMPROVED_Q10_PATH)
+            except Exception:
+                q10_model = None
+        if q90_model is None:
+            try:
+                if os.path.exists(IMPROVED_Q90_PATH):
+                    q90_model = joblib.load(IMPROVED_Q90_PATH)
+            except Exception:
+                q90_model = None
     try:
         if os.path.exists(IMPROVED_QMETA_PATH):
             with open(IMPROVED_QMETA_PATH, "r", encoding="utf-8") as f:
