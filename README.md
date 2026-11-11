@@ -37,26 +37,6 @@ Modern commercial aircraft turbofan engines operate under extreme thermal, aerod
 
 ---
 
-## ✨ Recent Platform Upgrades
-
-### 1. 🧠 Explainable AI (XAI) — Per-Engine Root-Cause Attribution
-* **Exact Tree-Path Decomposition (Saabas)**: Decomposes every individual engine's predicted RUL into $\text{base\_value} + \sum \text{feature contributions}$ across all 73 engineered telemetry features with machine-precision reconciliation ($\text{error} < 10^{-12}$).
-* **Interactive Root-Cause Waterfall & Ledger**: Highlights top degrading (`−RUL`) and stabilizing (`+RUL`) thermodynamic signals alongside an inspectable 25-feature attribution ledger in **🎯 RUL Improvement**.
-
-### 2. 📐 Conformalized 80% Quantile RUL Uncertainty Bounds (`[Q10, Q90]`)
-* **Split Conformalized Quantile Regression (CQR)**: Trains dual quantile regressors (`alpha = 0.10` / `0.90`) calibrated with a CQR safety margin (`+0.0208` cycles) to deliver guaranteed **`80%` prediction intervals** (`79.93%` empirical test coverage, `109.66` cycles mean interval width).
-* **End-to-End Uncertainty Awareness**: Enforces monotonic non-crossing intervals (`Q10 <= Point <= Q90`) rendered as shaded confidence ribbons across **Dashboard**, **RUL Improvement**, **Real-Time Monitoring**, and **Predictive Maintenance**.
-
-### 3. 📤 Custom FDR Telemetry Uploader (Unseen Data Ingestion)
-* **Universal NASA C-MAPSS Parser**: Accepts custom `.csv`, `.txt`, and `.tsv` flight logs in raw headerless space/comma format (`>= 6` columns, optional `RUL`), descriptive header CSVs, or AeroGuard-exported CSVs, with strict schema validation and `< 5`-cycle `NaN` protection across anomaly heatmaps and rolling Z-scores.
-* **Live Switch & Revert Workflow**: Accessible both from the **Sidebar** (positioned directly below **Engine Unit Designation**) and **🗄️ Sensor Data** (including a downloadable sample CSV template, `data/sample_unseen_fdr_test.csv` with unseen engines `#101` & `#204`, and a one-click **Revert to Bundled Fleet** button).
-
-### 4. 📦 Version-Independent Portable NumPy Bundles (`.npz`) & Cockpit UX Polish
-* **Pure-NumPy Tree Inference**: Serializes ensemble scalers and decision trees into lightweight `.npz` artifacts (`16.9–35.3 KB`) loaded without `scikit-learn`/`numpy` pickle ABI coupling, ensuring seamless Streamlit Cloud execution for RUL predictions, `Q10`/`Q90` intervals, and XAI attribution.
-* **High-Contrast Telemetry Canvas & Avionics HUD**: Soft whitish-grey chart canvases (`#eef2f6` / `#e5ebf3`) with crisp dark-slate typography and deep-merged legible legends, slate-grey widget/expander labels, an unclipped sidebar drawer toggle, and a directly clickable `[?] KEYMAP` HUD pill.
-
----
-
 ## 🚀 Key Functional Modules
 
 | Module | Core Capability | Operational Output |
@@ -136,6 +116,26 @@ Synthesizes RUL exhaustion, physical wear, and anomalous sensor density into an 
 * **Digital Twin**: Custom vector SVG turbofan cross-section schematic with real-time station callouts
 * **Styling**: Mission Control Aerospace CSS (Dark-mode cockpit HUD contrasted with high-legibility telemetry panels and monospace instrumentation)
 * **Avionics Hotkey Engine**: Native client-side bridge for Spacebar wide-screen toggling, 1–9 direct module jumps, clickable `[?] KEYMAP` HUD pill, and Smart Input Guard
+
+---
+
+## ✨ Recent Platform Upgrades
+
+### 1. 🧠 Explainable AI (XAI) — Per-Engine Root-Cause Attribution
+* **Exact Tree-Path Decomposition (Saabas)**: Decomposes every individual engine's predicted RUL into `base_value + Σ(feature contributions)` across all 73 engineered telemetry features with machine-precision reconciliation ($\text{error} < 10^{-12}$).
+* **Interactive Root-Cause Waterfall & Ledger**: Highlights top degrading (`−RUL`) and stabilizing (`+RUL`) thermodynamic signals alongside an inspectable 25-feature attribution ledger in **🎯 RUL Improvement**.
+
+### 2. 📐 Conformalized 80% Quantile RUL Uncertainty Bounds (`[Q10, Q90]`)
+* **Split Conformalized Quantile Regression (CQR)**: Trains dual quantile regressors (`alpha = 0.10` / `0.90`) calibrated with a CQR safety margin (`+0.0208` cycles) to deliver guaranteed **`80%` prediction intervals** (`79.93%` empirical test coverage, `109.66` cycles mean interval width).
+* **End-to-End Uncertainty Awareness**: Enforces monotonic non-crossing intervals (`Q10 <= Point <= Q90`) rendered as shaded confidence ribbons across **Dashboard**, **RUL Improvement**, **Real-Time Monitoring**, and **Predictive Maintenance**.
+
+### 3. 📤 Custom FDR Telemetry Uploader (Unseen Data Ingestion)
+* **Universal NASA C-MAPSS Parser**: Accepts custom `.csv`, `.txt`, and `.tsv` flight logs in raw headerless space/comma format (`>= 6` columns, optional `RUL`), descriptive header CSVs, or AeroGuard-exported CSVs, with strict schema validation and `< 5`-cycle `NaN` protection across anomaly heatmaps and rolling Z-scores.
+* **Live Switch & Revert Workflow**: Accessible both from the **Sidebar** (positioned directly below **Engine Unit Designation**) and **🗄️ Sensor Data** (including a downloadable sample CSV template, `data/sample_unseen_fdr_test.csv` with unseen engines `#101` & `#204`, and a one-click **Revert to Bundled Fleet** button).
+
+### 4. 📦 Version-Independent Portable NumPy Bundles (`.npz`) & Cockpit UX Polish
+* **Pure-NumPy Tree Inference**: Serializes ensemble scalers and decision trees into lightweight `.npz` artifacts (`16.9–35.3 KB`) loaded without `scikit-learn`/`numpy` pickle ABI coupling, ensuring seamless Streamlit Cloud execution for RUL predictions, `Q10`/`Q90` intervals, and XAI attribution.
+* **High-Contrast Telemetry Canvas & Avionics HUD**: Soft whitish-grey chart canvases (`#eef2f6` / `#e5ebf3`) with crisp dark-slate typography and deep-merged legible legends, slate-grey widget/expander labels, an unclipped sidebar drawer toggle, and a directly clickable `[?] KEYMAP` HUD pill.
 
 ---
 
